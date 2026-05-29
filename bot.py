@@ -20,6 +20,7 @@ log = logging.getLogger(__name__)
 
 COGS = [
     "cogs.image_search",
+    "cogs.version_announce",
 ]
 
 intents = discord.Intents.default()

@@ -37,9 +37,10 @@ Same EC2 instance as `discord-song-bot`. Independent Docker service at `/home/ub
 | `AWS_REGION` | already set |
 | `EC2_INSTANCE_ID` | already set |
 | `DISCORD_TOKEN` | new Discord bot token |
-| `TENOR_API_KEY` | Tenor developer console |
-| `GOOGLE_API_KEY` | Google Cloud Console |
-| `GOOGLE_CX` | Google Programmable Search Engine ID |
+| `DISCORD_CHANNEL_ID` | 업데이트 공지 채널 ID |
+| `GIPHY_API_KEY` | Giphy developer dashboard |
+| `NAVER_CLIENT_ID` | 네이버 개발자센터 앱 등록 |
+| `NAVER_CLIENT_SECRET` | 네이버 개발자센터 앱 등록 |
 
 Deploy: push to `main` → GitHub Actions → SSM → EC2 runs `docker compose up -d`
 
@@ -49,17 +50,17 @@ See `.env.example`. Never commit `.env` or any file with real credentials.
 
 ## APIs to implement
 
-### Tenor (GIF search) — recommended starting point
-- Free, no credit card needed
-- Docs: https://developers.google.com/tenor/guides/quickstart
-- Endpoint: `GET https://tenor.googleapis.com/v2/search?q={query}&key={TENOR_API_KEY}&limit=1`
-- Returns GIF URLs directly usable in Discord embeds
+### Giphy (GIF search) — implemented
+- Free tier: 1000 req/day
+- Docs: https://developers.giphy.com/docs/api/
+- Endpoint: `GET https://api.giphy.com/v1/gifs/search?q={query}&api_key={GIPHY_API_KEY}&limit=1`
+- Note: Tenor shut down new API clients as of Jan 2026
 
-### Google Custom Search (image search)
-- 100 free queries/day, then paid
-- Requires: API key + Custom Search Engine ID (CX)
-- Endpoint: `GET https://www.googleapis.com/customsearch/v1?q={query}&searchType=image&key={key}&cx={cx}`
-- Docs: https://developers.google.com/custom-search/v1/overview
+### Naver Image Search (image search) — implemented
+- 25,000 req/day free
+- Docs: https://developers.naver.com/docs/serviceapi/search/image/image.md
+- Endpoint: `GET https://openapi.naver.com/v1/search/image?query={query}&display=1`
+- Headers: `X-Naver-Client-Id`, `X-Naver-Client-Secret`
 
 ### Alternatives to consider
 - **Reddit API** — free, good quality images for many topics
