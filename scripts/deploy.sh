@@ -37,6 +37,13 @@ fi
 
 REPO=/home/ubuntu/discord-image-bot
 
+# Preserve .env across fresh clone
+TMP_ENV=""
+if [ -f "$REPO/.env" ]; then
+  TMP_ENV=$(mktemp)
+  cp "$REPO/.env" "$TMP_ENV"
+fi
+
 if [ -d "$REPO" ] && [ ! -d "$REPO/.git" ]; then
   echo "▶ 잔여 디렉토리 정리..."
   rm -rf "$REPO"
@@ -44,6 +51,12 @@ fi
 
 if [ ! -d "$REPO/.git" ]; then
   git clone https://github.com/kokospapa8/discord-image-bot.git "$REPO"
+fi
+
+# Restore .env after fresh clone
+if [ -n "$TMP_ENV" ] && [ -f "$TMP_ENV" ]; then
+  cp "$TMP_ENV" "$REPO/.env"
+  rm -f "$TMP_ENV"
 fi
 
 cd "$REPO"
