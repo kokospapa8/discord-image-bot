@@ -39,17 +39,18 @@ class VersionAnnounce(commands.Cog):
     async def _maybe_announce(self) -> None:
         channel_id = os.getenv("DISCORD_CHANNEL_ID", "").strip()
         if not channel_id or not channel_id.isdigit():
-            log.debug("version_announce: DISCORD_CHANNEL_ID not set")
+            log.warning("version_announce: DISCORD_CHANNEL_ID not set or invalid (%r)", channel_id)
             return
 
         current = self._read_file(_VERSION_FILE)
         if not current:
-            log.debug("version_announce: no VERSION file found")
+            log.warning("version_announce: VERSION file not found at %s", _VERSION_FILE)
             return
 
         last = self._read_file(_STATE_FILE)
+        log.info("version_announce: current=%s last=%s", current, last)
         if current == last:
-            log.debug("version_announce: already announced %s", current)
+            log.info("version_announce: already announced %s, skipping", current)
             return
 
         changelog = self._read_file(_ANNOUNCE_FILE) or "새 버전이 배포되었습니다."
@@ -61,12 +62,16 @@ class VersionAnnounce(commands.Cog):
         embed.set_footer(text="잠수하고 돌아왔어! 🐰")
 
         ch = self.bot.get_channel(int(channel_id))
-        if ch:
-            try:
-                await ch.send(embed=embed)
-                log.info("version_announce: announced %s to channel %s", current, channel_id)
-            except Exception as exc:
-                log.warning("version_announce: send failed: %s", exc)
+        if ch is None:
+            log.warning("version_announce: channel %s not found (bot not in server?)", channel_id)
+            return
+
+        try:
+            await ch.send(embed=embed)
+            log.info("version_announce: announced %s to channel %s", current, channel_id)
+        except Exception as exc:
+            log.warning("version_announce: send failed: %s", exc)
+            return
 
         self._write_file(_STATE_FILE, current)
 
