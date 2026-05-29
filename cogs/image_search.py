@@ -44,9 +44,10 @@ _SYSTEM_PROMPT = """\
 - 되묻는 것보다 틀린 검색이 낫다
 - 개수 요청 ("3개", "5장", "여러 개") → count 파라미터에 반영 (최대 5)
 
-[기능]
-- search_gif → 움짤 (애니메이션 GIF, Giphy)
-- search_image → 짤/이미지 (정적 사진, Naver)
+[기능 — 엄격한 구분]
+- "짤", "사진", "이미지" → search_image (Naver 정적 이미지)
+- "움짤", "gif", "GIF" → search_gif (Giphy 애니메이션)
+- 모호하면 "짤" 계열은 search_image, "움짤" 계열은 search_gif
 
 [검색 쿼리 규칙]
 - search_gif: 영어로 번역해서 검색 (Giphy는 영어 쿼리가 훨씬 좋음)
@@ -87,8 +88,8 @@ _EMPTY_REPLIES = [
 
 # Claude가 툴을 안 부를 때 강제 검색 트리거 키워드
 _GIF_KEYWORDS   = {"움짤", "gif", "GIF", "짤방"}
-_IMAGE_KEYWORDS = {"사진", "이미지", "그림", "포스터"}
-_ANY_KEYWORDS   = {"짤", "찾아줘", "검색", "보여줘", "찾아와", "건져와"}
+_IMAGE_KEYWORDS = {"짤", "사진", "이미지", "그림", "포스터"}
+_ANY_KEYWORDS   = {"찾아줘", "검색", "보여줘", "찾아와", "건져와"}
 
 ResultItem = str | discord.Embed | tuple[str, discord.Embed]
 
