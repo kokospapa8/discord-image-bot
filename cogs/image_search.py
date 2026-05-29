@@ -84,6 +84,11 @@ _EMPTY_REPLIES = [
     "앗 검색어가 없어… 뭐 건져올까?",
 ]
 
+# 이 키워드가 포함된 메시지에서 Claude가 툴을 안 부르면 강제 검색
+_GIF_KEYWORDS  = {"움짤", "gif", "GIF", "짤방"}
+_IMAGE_KEYWORDS = {"사진", "이미지", "그림", "포스터"}
+_ANY_KEYWORDS  = {"짤", "찾아줘", "찾아줘", "검색", "보여줘", "찾아와", "건져와"}
+
 
 class ImageSearch(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
@@ -146,6 +151,16 @@ class ImageSearch(commands.Cog):
         tool_block = next((b for b in response.content if b.type == "tool_use"), None)
 
         if not tool_block:
+            # 키워드 감지 폴백: 검색 의도 있는데 툴 안 부른 경우 강제 검색
+            if any(kw in user_text for kw in _GIF_KEYWORDS):
+                log.info("keyword fallback → gif: %r", user_text)
+                return await self._search_giphy(user_text)
+            if any(kw in user_text for kw in _IMAGE_KEYWORDS):
+                log.info("keyword fallback → image: %r", user_text)
+                return await self._search_naver_image(user_text)
+            if any(kw in user_text for kw in _ANY_KEYWORDS):
+                log.info("keyword fallback → gif (default): %r", user_text)
+                return await self._search_giphy(user_text)
             text_block = next((b for b in response.content if b.type == "text"), None)
             return text_block.text if text_block else None
 
