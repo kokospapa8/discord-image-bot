@@ -14,6 +14,12 @@ IMAGE_TOOLS: list[dict] = [
                     "type": "string",
                     "description": "영어 검색어. 구체적이고 표현력 있게. 예: 'cute bunny jumping', 'excited reaction'.",
                 },
+                "count": {
+                    "type": "integer",
+                    "description": "가져올 움짤 수. 기본 1, 최대 5. '3개', '여러 개' 요청 시 반영.",
+                    "minimum": 1,
+                    "maximum": 5,
+                },
             },
             "required": ["query"],
         },
@@ -32,6 +38,12 @@ IMAGE_TOOLS: list[dict] = [
                 "query": {
                     "type": "string",
                     "description": "한국어 검색어. 구체적으로. 예: '귀여운 토끼 짤', '제주도 바다 사진'.",
+                },
+                "count": {
+                    "type": "integer",
+                    "description": "가져올 이미지 수. 기본 1, 최대 5. '3장', '여러 개' 요청 시 반영.",
+                    "minimum": 1,
+                    "maximum": 5,
                 },
             },
             "required": ["query"],

@@ -1,7 +1,7 @@
 """
 Image Search Cog — responds to @mentions with images or GIFs.
 
-Trigger: any message that @mentions the bot.
+Trigger: any message that @mentions the bot, or any message in DISCORD_CHANNEL_ID.
 LLM: Miffy(Claude) decides between search_gif (Giphy) and search_image (Naver).
 """
 from __future__ import annotations
@@ -42,6 +42,7 @@ _SYSTEM_PROMPT = """\
 - 예: "들어오는건 마음대로지만 이미지 찾아줘" → search_image("들어오는건 마음대로")
 - 예: "아무거나 짤" → search_gif("random funny reaction")
 - 되묻는 것보다 틀린 검색이 낫다
+- 개수 요청 ("3개", "5장", "여러 개") → count 파라미터에 반영 (최대 5)
 
 [기능]
 - search_gif → 움짤 (애니메이션 GIF, Giphy)
@@ -84,10 +85,12 @@ _EMPTY_REPLIES = [
     "앗 검색어가 없어… 뭐 건져올까?",
 ]
 
-# 이 키워드가 포함된 메시지에서 Claude가 툴을 안 부르면 강제 검색
-_GIF_KEYWORDS  = {"움짤", "gif", "GIF", "짤방"}
+# Claude가 툴을 안 부를 때 강제 검색 트리거 키워드
+_GIF_KEYWORDS   = {"움짤", "gif", "GIF", "짤방"}
 _IMAGE_KEYWORDS = {"사진", "이미지", "그림", "포스터"}
-_ANY_KEYWORDS  = {"짤", "찾아줘", "찾아줘", "검색", "보여줘", "찾아와", "건져와"}
+_ANY_KEYWORDS   = {"짤", "찾아줘", "검색", "보여줘", "찾아와", "건져와"}
+
+ResultItem = str | discord.Embed | tuple[str, discord.Embed]
 
 
 class ImageSearch(commands.Cog):
@@ -129,22 +132,34 @@ class ImageSearch(commands.Cog):
             return
 
         async with message.channel.typing():
-            result = await self._handle_llm(content)
+            results = await self._handle_llm(content)
 
-        if result is None:
+        if not results:
             return
 
-        if isinstance(result, tuple):
-            text, embed = result
-            await message.reply(content=text, embed=embed)
-        elif isinstance(result, discord.Embed):
-            await message.reply(embed=result)
-        else:
-            await message.reply(str(result))
+        async def _send(item: ResultItem, *, reply: bool) -> None:
+            if isinstance(item, tuple):
+                text, embed = item
+                if reply:
+                    await message.reply(content=text, embed=embed)
+                else:
+                    await message.channel.send(content=text, embed=embed)
+            elif isinstance(item, discord.Embed):
+                if reply:
+                    await message.reply(embed=item)
+                else:
+                    await message.channel.send(embed=item)
+            else:
+                if reply:
+                    await message.reply(str(item))
+                else:
+                    await message.channel.send(str(item))
 
-    async def _handle_llm(
-        self, user_text: str
-    ) -> str | discord.Embed | tuple[str, discord.Embed] | None:
+        await _send(results[0], reply=True)
+        for item in results[1:]:
+            await _send(item, reply=False)
+
+    async def _handle_llm(self, user_text: str) -> list[ResultItem]:
         try:
             response = await self._anthropic.messages.create(
                 model=self._model,
@@ -155,41 +170,42 @@ class ImageSearch(commands.Cog):
             )
         except anthropic.APIError as exc:
             log.exception("Anthropic API error")
-            return f"앗 뭔가 잘못됐어… (오류: {exc})"
+            return [f"앗 뭔가 잘못됐어… (오류: {exc})"]
 
         tool_block = next((b for b in response.content if b.type == "tool_use"), None)
 
         if not tool_block:
-            # 키워드 감지 폴백: 검색 의도 있는데 툴 안 부른 경우 강제 검색
+            # 키워드 폴백: 검색 의도 있는데 툴 안 부른 경우 강제 검색
             if any(kw in user_text for kw in _GIF_KEYWORDS):
                 log.info("keyword fallback → gif: %r", user_text)
-                return await self._search_giphy(user_text)
+                return await self._search_giphy(user_text, count=1)
             if any(kw in user_text for kw in _IMAGE_KEYWORDS):
                 log.info("keyword fallback → image: %r", user_text)
-                return await self._search_naver_image(user_text)
+                return await self._search_naver_image(user_text, count=1)
             if any(kw in user_text for kw in _ANY_KEYWORDS):
                 log.info("keyword fallback → gif (default): %r", user_text)
-                return await self._search_giphy(user_text)
+                return await self._search_giphy(user_text, count=1)
             text_block = next((b for b in response.content if b.type == "text"), None)
-            return text_block.text if text_block else None
+            return [text_block.text] if text_block else []
 
+        count = min(int(tool_block.input.get("count", 1)), 5)
         match tool_block.name:
             case "search_gif":
-                return await self._search_giphy(tool_block.input["query"])
+                return await self._search_giphy(tool_block.input["query"], count=count)
             case "search_image":
-                return await self._search_naver_image(tool_block.input["query"])
+                return await self._search_naver_image(tool_block.input["query"], count=count)
             case _:
                 log.warning("Unknown tool: %s", tool_block.name)
-                return None
+                return []
 
-    async def _search_giphy(self, query: str) -> str:
+    async def _search_giphy(self, query: str, count: int = 1) -> list[ResultItem]:
         if not self.giphy_api_key:
-            return "앗 GIPHY_API_KEY가 없어… 설정 확인해줘!"
+            return ["앗 GIPHY_API_KEY가 없어… 설정 확인해줘!"]
 
         params = {
             "q": query,
             "api_key": self.giphy_api_key,
-            "limit": 1,
+            "limit": count,
             "rating": "g",
         }
         async with aiohttp.ClientSession() as session:
@@ -198,29 +214,31 @@ class ImageSearch(commands.Cog):
             ) as resp:
                 if resp.status != 200:
                     log.error("Giphy API error: %s", resp.status)
-                    return "이번엔 못 건져왔어… 다시 해볼까? 🫧"
+                    return ["이번엔 못 건져왔어… 다시 해볼까? 🫧"]
                 data = await resp.json()
 
-        results = data.get("data", [])
-        if not results:
-            return f"`{query}` 움짤은 바다 끝까지 가도 없었어…"
+        items = data.get("data", [])
+        if not items:
+            return [f"`{query}` 움짤은 바다 끝까지 가도 없었어…"]
 
-        gif_url = results[0].get("url")
-        if not gif_url:
-            return "이번엔 못 건져왔어… 다시 해볼까? 🫧"
+        urls = [item.get("url") for item in items if item.get("url")]
+        if not urls:
+            return ["이번엔 못 건져왔어… 다시 해볼까? 🫧"]
 
         reaction = random.choice(_GIF_REACTIONS)
-        return f"{reaction}\n{gif_url}"
+        results: list[ResultItem] = [f"{reaction}\n{urls[0]}"]
+        results += list(urls[1:])
+        return results
 
-    async def _search_naver_image(self, query: str) -> tuple[str, discord.Embed] | str:
+    async def _search_naver_image(self, query: str, count: int = 1) -> list[ResultItem]:
         if not self.naver_client_id or not self.naver_client_secret:
-            return "앗 NAVER 키가 없어… 설정 확인해줘!"
+            return ["앗 NAVER 키가 없어… 설정 확인해줘!"]
 
         headers = {
             "X-Naver-Client-Id": self.naver_client_id,
             "X-Naver-Client-Secret": self.naver_client_secret,
         }
-        params = {"query": query, "display": 1, "sort": "sim"}
+        params = {"query": query, "display": count, "sort": "sim"}
         async with aiohttp.ClientSession() as session:
             async with session.get(
                 "https://openapi.naver.com/v1/search/image",
@@ -229,21 +247,26 @@ class ImageSearch(commands.Cog):
             ) as resp:
                 if resp.status != 200:
                     log.error("Naver image API error: %s", resp.status)
-                    return "이번엔 못 건져왔어… 다시 해볼까? 🌊"
+                    return ["이번엔 못 건져왔어… 다시 해볼까? 🌊"]
                 data = await resp.json()
 
         items = data.get("items", [])
         if not items:
-            return f"`{query}` 짤은 바다 끝까지 가도 없었어…"
+            return [f"`{query}` 짤은 바다 끝까지 가도 없었어…"]
 
-        image_url = items[0].get("link")
-        if not image_url:
-            return "이번엔 못 건져왔어… 다시 해볼까? 🌊"
+        results: list[ResultItem] = []
+        for i, item in enumerate(items):
+            image_url = item.get("link")
+            if not image_url:
+                continue
+            embed = discord.Embed(title=query if i == 0 else "", color=0x03C75A)
+            embed.set_image(url=image_url)
+            if i == 0:
+                results.append((random.choice(_IMAGE_REACTIONS), embed))
+            else:
+                results.append(embed)
 
-        reaction = random.choice(_IMAGE_REACTIONS)
-        embed = discord.Embed(title=query, color=0x03C75A)
-        embed.set_image(url=image_url)
-        return reaction, embed
+        return results if results else ["이번엔 못 건져왔어… 다시 해볼까? 🌊"]
 
 
 async def setup(bot: commands.Bot) -> None:
