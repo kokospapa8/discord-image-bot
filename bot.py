@@ -30,11 +30,15 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 
 @bot.event
-async def on_ready() -> None:
-    log.info("Logged in as %s (id=%s)", bot.user, bot.user.id)
+async def setup_hook() -> None:
     for cog in COGS:
         await bot.load_extension(cog)
         log.info("Loaded cog: %s", cog)
+
+
+@bot.event
+async def on_ready() -> None:
+    log.info("Logged in as %s (id=%s)", bot.user, bot.user.id)
 
 
 if __name__ == "__main__":
