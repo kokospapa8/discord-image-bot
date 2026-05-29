@@ -100,6 +100,8 @@ class ImageSearch(commands.Cog):
             api_key=os.environ["ANTHROPIC_API_KEY"]
         )
         self._model = os.getenv("CLAUDE_MODEL", "claude-haiku-4-5-20251001")
+        raw = os.getenv("DISCORD_CHANNEL_ID", "").strip()
+        self._image_channel_id: int | None = int(raw) if raw.isdigit() else None
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message) -> None:
@@ -107,7 +109,14 @@ class ImageSearch(commands.Cog):
             return
         if not message.guild:
             return
-        if self.bot.user not in message.mentions:
+
+        in_image_channel = (
+            self._image_channel_id is not None
+            and message.channel.id == self._image_channel_id
+        )
+        mentioned = self.bot.user in message.mentions
+
+        if not (in_image_channel or mentioned):
             return
 
         content = message.content
