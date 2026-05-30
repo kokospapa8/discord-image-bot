@@ -116,6 +116,30 @@ MEMBER_TOOLS: list[dict] = [
             "required": [],
         },
     },
+    {
+        "name": "delete_my_info",
+        "description": (
+            "내 저장 정보 중 특정 항목 삭제. "
+            "'내 MBTI 지워줘', '특징 X 삭제해줘', '내 사주 없애줘', '내 정보 다 지워줘' 등. "
+            "field: mbti/saju/keyword/advice_mode/all. "
+            "keyword 삭제 시 value에 특정 키워드 명시하면 해당 것만, 없으면 전체 삭제."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "field": {
+                    "type": "string",
+                    "enum": ["mbti", "saju", "keyword", "advice_mode", "all"],
+                    "description": "삭제할 필드. all이면 전체 삭제.",
+                },
+                "value": {
+                    "type": "string",
+                    "description": "keyword 필드 삭제 시 특정 키워드 명시 (생략 시 전체 삭제).",
+                },
+            },
+            "required": ["field"],
+        },
+    },
 ]
 
 GAME_TOOLS: list[dict] = [
@@ -154,6 +178,23 @@ GAME_TOOLS: list[dict] = [
                 "played": {
                     "type": "boolean",
                     "description": "true=플레이완료, false=미플레이로 되돌리기. 기본 true.",
+                },
+            },
+            "required": ["game_name"],
+        },
+    },
+    {
+        "name": "delete_game",
+        "description": (
+            "게임 목록에서 특정 게임 삭제. "
+            "'X 지워줘', 'X 삭제해줘', 'X 목록에서 빼줘' 등 요청 시 사용."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "game_name": {
+                    "type": "string",
+                    "description": "삭제할 게임 이름 (부분 일치) 또는 appid.",
                 },
             },
             "required": ["game_name"],

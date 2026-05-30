@@ -56,7 +56,7 @@ _SYSTEM_PROMPT = """\
 - search_gif: 영어로 번역해서 검색 (Giphy는 영어 쿼리가 훨씬 좋음)
 - search_image: 한국어 그대로 (Naver 한국 콘텐츠 최적)
 
-[멤버 정보 자동 저장 — 반드시 감지]
+[멤버 정보 자동 저장/조회/삭제 — 본인만]
 - 사용자가 MBTI, 사주, 성격/특징을 언급하면 반드시 save_member_info 호출
   예: "나 INFP야" → save_member_info(field="mbti", value="INFP")
   예: "내 사주 1995년 3월 14일 오전이야" → save_member_info(field="saju", value="1995년 3월 14일 오전")
@@ -66,17 +66,19 @@ _SYSTEM_PROMPT = """\
 
 [내 정보 조회]
 - "내 정보", "내 특징", "내 MBTI", "내 사주", "저장된 정보" 등 → get_my_info 호출
-- 다른 사람 정보 조회 요청은 거절: "앗 그건 못 건져오는 바다야 🫧"
+- 다른 사람 정보 조회/수정/삭제 요청은 거절: "앗 그건 못 건져오는 바다야 🫧"
+- "내 MBTI 지워줘", "내 정보 다 지워줘", "특징 말없음 삭제해줘" → delete_my_info 호출
 
 [고민상담 모드 — [대화 상대 정보]에 포함됨]
 - advice_mode T모드: 논리적, 직접적, 원인/해결책 위주. 공감보다 팩트와 조언.
 - advice_mode F모드(기본): 공감 먼저, "그랬구나", "힘들었겠다" 로 시작. 따뜻하게.
 - 모드 미설정 시 F모드로 대응
 
-[게임 위시리스트]
+[게임 위시리스트 — 누구나 조회/수정/삭제 가능]
 - "게임 목록", "위시리스트", "안 해본 게임", "해본 게임" → get_game_list 호출
 - "X 해봤어", "X 완료", "X 했어" → mark_game_played(game_name=X, played=true)
 - "X 링크", "X 스팀 주소" → get_game_link(game_name=X)
+- "X 지워줘", "X 삭제해줘" → delete_game(game_name=X)
 - 결과를 미피 스타일로 자연스럽게 안내
 
 [비검색 메시지]
@@ -323,9 +325,39 @@ class ImageSearch(commands.Cog):
                 return await self._handle_tool_roundtrip(
                     tool_block, messages, response, system, result_text
                 )
+            case "delete_game":
+                game_name = tool_block.input.get("game_name", "")
+                deleted = game_store.delete_game(game_name)
+                result_text = f"삭제됨: {deleted}" if deleted else f"'{game_name}' 를 목록에서 못 찾았어."
+                return await self._handle_tool_roundtrip(
+                    tool_block, messages, response, system, result_text
+                )
+            case "delete_my_info":
+                result_text = self._do_delete_my_info(tool_block.input, author_id, author_name)
+                return await self._handle_tool_roundtrip(
+                    tool_block, messages, response, system, result_text
+                )
             case _:
                 log.warning("Unknown tool: %s", tool_block.name)
                 return []
+
+    def _do_delete_my_info(
+        self, inp: dict, author_id: int | None, author_name: str
+    ) -> str:
+        if author_id is None:
+            return "삭제 실패: 사용자 ID 없음"
+        field = inp.get("field", "")
+        value = inp.get("value", "").strip()
+        if field == "all":
+            member_memory.save(author_id, {})
+            log.info("deleted all member info: id=%s", author_id)
+            return "전체 삭제됨"
+        if field == "keyword" and value:
+            ok = member_memory.delete_keyword(author_id, value)
+            return f"키워드 '{value}' 삭제됨" if ok else f"키워드 '{value}' 를 못 찾았어."
+        ok = member_memory.delete_field(author_id, field)
+        log.info("deleted member field: id=%s field=%s", author_id, field)
+        return f"{field} 삭제됨" if ok else f"{field} 정보가 없었어."
 
     def _do_save_member_info(
         self, inp: dict, author_id: int | None, author_name: str

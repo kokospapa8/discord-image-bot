@@ -28,6 +28,36 @@ def save(member_id: int, data: dict) -> None:
     )
 
 
+def delete_field(member_id: int, field: str) -> bool:
+    """Delete a specific field. For 'keyword', clears all. Returns True if something was deleted."""
+    data = load(member_id)
+    if not data:
+        return False
+    if field == "keyword":
+        if "keywords" not in data:
+            return False
+        data.pop("keywords")
+    elif field in data:
+        data.pop(field)
+    else:
+        return False
+    save(member_id, data)
+    return True
+
+
+def delete_keyword(member_id: int, keyword: str) -> bool:
+    """Delete a specific keyword entry."""
+    data = load(member_id)
+    keywords = data.get("keywords", [])
+    kl = keyword.lower()
+    new_kw = [k for k in keywords if k.lower() != kl]
+    if len(new_kw) == len(keywords):
+        return False
+    data["keywords"] = new_kw
+    save(member_id, data)
+    return True
+
+
 def add_keyword(member_id: int, display_name: str, keyword: str) -> None:
     data = load(member_id)
     data.setdefault("display_name", display_name)

@@ -64,6 +64,19 @@ def find_game(query: str) -> dict | None:
     return None
 
 
+def delete_game(query: str) -> str | None:
+    """Returns deleted game name or None."""
+    data = load()
+    q = query.lower()
+    for i, g in enumerate(data["games"]):
+        if g["appid"] == query or q in g["name"].lower():
+            name = g["name"]
+            data["games"].pop(i)
+            save(data)
+            return name
+    return None
+
+
 def format_list(filter_: str = "all") -> str:
     """
     filter_: 'all' | 'unplayed' | 'played'
