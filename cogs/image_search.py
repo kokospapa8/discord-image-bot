@@ -308,9 +308,9 @@ class ImageSearch(commands.Cog):
             log.exception("Anthropic API error")
             return [f"앗 뭔가 잘못됐어… (오류: {exc})"]
 
-        tool_block = next((b for b in response.content if b.type == "tool_use"), None)
+        tool_blocks = [b for b in response.content if b.type == "tool_use"]
 
-        if not tool_block:
+        if not tool_blocks:
             # 키워드 폴백: 검색 의도 있는데 툴 안 부른 경우 강제 검색
             if any(kw in user_text for kw in _GIF_KEYWORDS):
                 log.info("keyword fallback → gif: %r", user_text)
@@ -324,74 +324,75 @@ class ImageSearch(commands.Cog):
             text_block = next((b for b in response.content if b.type == "text"), None)
             return [text_block.text] if text_block else []
 
-        count = min(int(tool_block.input.get("count", 1)), 5)
-        match tool_block.name:
-            case "search_gif":
-                return await self._search_giphy(tool_block.input["query"], count=count)
-            case "search_image":
-                return await self._search_naver_image(tool_block.input["query"], count=count)
+        # Media tools return images directly (no roundtrip needed)
+        first = tool_blocks[0]
+        if first.name in ("search_gif", "search_image"):
+            count = min(int(first.input.get("count", 1)), 5)
+            if first.name == "search_gif":
+                return await self._search_giphy(first.input["query"], count=count)
+            return await self._search_naver_image(first.input["query"], count=count)
+
+        # Execute ALL tool_use blocks and collect results for roundtrip.
+        # This handles the case where Claude calls multiple tools at once
+        # (e.g. save_member_info twice for MBTI + 사주 in one message).
+        tool_results = []
+        for tb in tool_blocks:
+            result_str = await self._execute_tool(tb, author_id, author_name)
+            tool_results.append({
+                "type": "tool_result",
+                "tool_use_id": tb.id,
+                "content": result_str,
+            })
+
+        next_messages = messages + [
+            {"role": "assistant", "content": response.content},
+            {"role": "user", "content": tool_results},
+        ]
+        try:
+            response2 = await self._anthropic.messages.create(
+                model=self._model,
+                max_tokens=512,
+                system=system,
+                tools=ALL_TOOLS,  # type: ignore[arg-type]
+                messages=next_messages,
+            )
+        except anthropic.APIError as exc:
+            log.exception("Anthropic API error (tool roundtrip)")
+            return [f"앗 뭔가 잘못됐어… (오류: {exc})"]
+
+        text_block = next((b for b in response2.content if b.type == "text"), None)
+        return [text_block.text] if text_block else ["앗 결과를 못 가져왔어 🫧"]
+
+    async def _execute_tool(self, tb, author_id: int | None, author_name: str) -> str:  # noqa: ANN001
+        """Execute a single tool_use block and return its result as a string."""
+        match tb.name:
             case "search_web":
-                return await self._handle_tool_roundtrip(
-                    tool_block, messages, response, system,
-                    await self._search_brave(tool_block.input["query"]),
-                )
+                return await self._search_brave(tb.input["query"])
             case "save_member_info":
-                result_text = self._do_save_member_info(
-                    tool_block.input, author_id, author_name
-                )
-                return await self._handle_tool_roundtrip(
-                    tool_block, messages, response, system, result_text
-                )
+                return self._do_save_member_info(tb.input, author_id, author_name)
             case "get_my_info":
                 info = member_memory.format_for_display(author_id, author_name) if author_id else ""
-                result_text = info if info else "저장된 정보가 없어."
-                return await self._handle_tool_roundtrip(
-                    tool_block, messages, response, system, result_text
-                )
-            case "get_game_list":
-                filter_ = tool_block.input.get("filter", "all")
-                result_text = game_store.format_list(filter_)
-                return await self._handle_tool_roundtrip(
-                    tool_block, messages, response, system, result_text
-                )
-            case "mark_game_played":
-                game_name = tool_block.input.get("game_name", "")
-                played = bool(tool_block.input.get("played", True))
-                found = game_store.mark_played(game_name, played)
-                result_text = f"완료: {found}" if found else f"'{game_name}' 를 목록에서 못 찾았어."
-                return await self._handle_tool_roundtrip(
-                    tool_block, messages, response, system, result_text
-                )
-            case "get_game_link":
-                game_name = tool_block.input.get("game_name", "")
-                game = game_store.find_game(game_name)
-                if game:
-                    result_text = f"{game['name']}: {game['url']}"
-                else:
-                    result_text = f"'{game_name}' 를 목록에서 못 찾았어."
-                return await self._handle_tool_roundtrip(
-                    tool_block, messages, response, system, result_text
-                )
-            case "get_lol_stats":
-                result_text = await self._fetch_lol_stats(tool_block.input, author_id)
-                return await self._handle_tool_roundtrip(
-                    tool_block, messages, response, system, result_text
-                )
-            case "delete_game":
-                game_name = tool_block.input.get("game_name", "")
-                deleted = game_store.delete_game(game_name)
-                result_text = f"삭제됨: {deleted}" if deleted else f"'{game_name}' 를 목록에서 못 찾았어."
-                return await self._handle_tool_roundtrip(
-                    tool_block, messages, response, system, result_text
-                )
+                return info if info else "저장된 정보가 없어."
             case "delete_my_info":
-                result_text = self._do_delete_my_info(tool_block.input, author_id, author_name)
-                return await self._handle_tool_roundtrip(
-                    tool_block, messages, response, system, result_text
+                return self._do_delete_my_info(tb.input, author_id, author_name)
+            case "get_lol_stats":
+                return await self._fetch_lol_stats(tb.input, author_id)
+            case "get_game_list":
+                return game_store.format_list(tb.input.get("filter", "all"))
+            case "mark_game_played":
+                found = game_store.mark_played(
+                    tb.input.get("game_name", ""), bool(tb.input.get("played", True))
                 )
+                return f"완료: {found}" if found else f"'{tb.input.get('game_name')}' 못 찾았어."
+            case "get_game_link":
+                game = game_store.find_game(tb.input.get("game_name", ""))
+                return f"{game['name']}: {game['url']}" if game else "못 찾았어."
+            case "delete_game":
+                deleted = game_store.delete_game(tb.input.get("game_name", ""))
+                return f"삭제됨: {deleted}" if deleted else "못 찾았어."
             case _:
-                log.warning("Unknown tool: %s", tool_block.name)
-                return []
+                log.warning("Unknown tool: %s", tb.name)
+                return "알 수 없는 툴"
 
     async def _fetch_lol_stats(self, inp: dict, author_id: int | None) -> str:
         if not self.riot_api_key:
@@ -444,43 +445,6 @@ class ImageSearch(commands.Cog):
             member_memory.set_field(author_id, author_name, field, value)
         log.info("saved member info: id=%s field=%s value=%r", author_id, field, value)
         return "저장됨"
-
-    async def _handle_tool_roundtrip(
-        self,
-        tool_block,  # noqa: ANN001
-        messages: list[dict],
-        first_response,  # noqa: ANN001
-        system: str,
-        tool_result: str,
-    ) -> list[ResultItem]:
-        """Feed a tool result back to Claude and return its synthesized text."""
-        next_messages = messages + [
-            {"role": "assistant", "content": first_response.content},
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": tool_block.id,
-                        "content": tool_result,
-                    }
-                ],
-            },
-        ]
-        try:
-            response2 = await self._anthropic.messages.create(
-                model=self._model,
-                max_tokens=512,
-                system=system,
-                tools=ALL_TOOLS,  # type: ignore[arg-type]
-                messages=next_messages,
-            )
-        except anthropic.APIError as exc:
-            log.exception("Anthropic API error (tool roundtrip)")
-            return [f"앗 뭔가 잘못됐어… (오류: {exc})"]
-
-        text_block = next((b for b in response2.content if b.type == "text"), None)
-        return [text_block.text] if text_block else ["앗 결과를 못 가져왔어 🫧"]
 
     async def _search_brave(self, query: str) -> str:
         if not self.brave_api_key:
