@@ -108,4 +108,6 @@ def format_for_display(member_id: int, fallback_name: str) -> str:
         mode = data["advice_mode"]
         label = "논리/팩트형" if mode == "T" else "공감/감성형"
         parts.append(f"고민상담 모드: {mode}모드 ({label})")
+    if data.get("riot_id"):
+        parts.append(f"Riot ID: {data['riot_id']}")
     return "\n".join(parts)

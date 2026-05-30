@@ -18,7 +18,7 @@ from discord.ext import commands
 
 from utils.image_tools import ALL_TOOLS
 from utils.conversation import logger as conv_logger
-from utils import member_memory, game_store
+from utils import member_memory, game_store, riot_api
 from cogs.praise import parse_intent
 
 log = logging.getLogger(__name__)
@@ -86,6 +86,12 @@ _SYSTEM_PROMPT = """\
 - 분석 요청이 없으면 이미지는 무시하고 텍스트 요청대로 처리 (예: 짤 검색)
 - 분석 시 미피 캐릭터로 재밌게, 2~4줄
 
+[롤 전적 조회]
+- "전적", "롤 전적", "요즘 롤", "성적" 등 → get_lol_stats 호출
+- riot_id 미등록 시: "앗 라이엇 ID가 없어! '내 라이엇 ID는 Name#Tag야' 라고 알려줘 🐰"
+- 조회 결과를 미피 스타일로 짧게 코멘트 (잘하면 칭찬, 못하면 위로)
+- "내 라이엇 ID는 Hide#KR1이야" → save_member_info(field="riot_id", value="Hide#KR1")
+
 [게임 위시리스트 — 누구나 조회/수정/삭제 가능]
 - "게임 목록", "위시리스트", "안 해본 게임", "해본 게임" → get_game_list 호출
 - "X 해봤어", "X 완료", "X 했어" → mark_game_played(game_name=X, played=true)
@@ -141,6 +147,7 @@ class ImageSearch(commands.Cog):
         self.naver_client_id = os.environ.get("NAVER_CLIENT_ID", "")
         self.naver_client_secret = os.environ.get("NAVER_CLIENT_SECRET", "")
         self.brave_api_key = os.environ.get("BRAVE_SEARCH_API_KEY", "")
+        self.riot_api_key = os.environ.get("RIOT_API_KEY", "")
         self._anthropic = anthropic.AsyncAnthropic(
             api_key=os.environ["ANTHROPIC_API_KEY"]
         )
@@ -359,6 +366,11 @@ class ImageSearch(commands.Cog):
                 return await self._handle_tool_roundtrip(
                     tool_block, messages, response, system, result_text
                 )
+            case "get_lol_stats":
+                result_text = await self._fetch_lol_stats(tool_block.input, author_id)
+                return await self._handle_tool_roundtrip(
+                    tool_block, messages, response, system, result_text
+                )
             case "delete_game":
                 game_name = tool_block.input.get("game_name", "")
                 deleted = game_store.delete_game(game_name)
@@ -374,6 +386,24 @@ class ImageSearch(commands.Cog):
             case _:
                 log.warning("Unknown tool: %s", tool_block.name)
                 return []
+
+    async def _fetch_lol_stats(self, inp: dict, author_id: int | None) -> str:
+        if not self.riot_api_key:
+            return "앗 RIOT_API_KEY가 없어… 설정 확인해줘!"
+
+        riot_id = (inp.get("riot_id") or "").strip()
+
+        # Fall back to author's saved riot_id
+        if not riot_id and author_id:
+            mem = member_memory.load(author_id)
+            riot_id = mem.get("riot_id", "")
+
+        if not riot_id:
+            return "Riot ID가 등록되지 않았어. '내 라이엇 ID는 Name#Tag야' 라고 알려줘!"
+
+        count = min(int(inp.get("count", 5)), 10)
+        log.info("lol stats: %r count=%d", riot_id, count)
+        return await riot_api.format_stats(riot_id, count, self.riot_api_key)
 
     def _do_delete_my_info(
         self, inp: dict, author_id: int | None, author_name: str

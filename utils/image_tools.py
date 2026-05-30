@@ -92,12 +92,12 @@ MEMBER_TOOLS: list[dict] = [
             "properties": {
                 "field": {
                     "type": "string",
-                    "enum": ["mbti", "saju", "keyword", "advice_mode"],
-                    "description": "저장할 필드 종류. advice_mode는 'T' 또는 'F'.",
+                    "enum": ["mbti", "saju", "keyword", "advice_mode", "riot_id"],
+                    "description": "저장할 필드 종류. advice_mode는 'T'/'F'. riot_id는 'Name#Tag' 형식.",
                 },
                 "value": {
                     "type": "string",
-                    "description": "저장할 값. keyword는 핵심 단어로 압축. advice_mode는 'T' 또는 'F'.",
+                    "description": "저장할 값. riot_id는 'Hide#KR1' 같은 형식. keyword는 핵심 단어로 압축.",
                 },
             },
             "required": ["field", "value"],
@@ -129,7 +129,7 @@ MEMBER_TOOLS: list[dict] = [
             "properties": {
                 "field": {
                     "type": "string",
-                    "enum": ["mbti", "saju", "keyword", "advice_mode", "all"],
+                    "enum": ["mbti", "saju", "keyword", "advice_mode", "riot_id", "all"],
                     "description": "삭제할 필드. all이면 전체 삭제.",
                 },
                 "value": {
@@ -219,4 +219,32 @@ GAME_TOOLS: list[dict] = [
     },
 ]
 
-ALL_TOOLS: list[dict] = WEB_TOOLS + MEMBER_TOOLS + GAME_TOOLS + IMAGE_TOOLS
+RIOT_TOOLS: list[dict] = [
+    {
+        "name": "get_lol_stats",
+        "description": (
+            "리그 오브 레전드 전적 조회. "
+            "'전적 보여줘', '롤 전적', '요즘 롤 어때', 'LoL 성적' 등 요청 시 사용. "
+            "riot_id 미입력 시 사용자 본인의 저장된 ID로 조회. "
+            "다른 멤버 전적: '진욱 전적 보여줘' → riot_id에 해당 멤버 ID 입력 (알면)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "riot_id": {
+                    "type": "string",
+                    "description": "조회할 Riot ID (Name#Tag). 비워두면 본인 저장 ID 사용.",
+                },
+                "count": {
+                    "type": "integer",
+                    "description": "조회할 최근 게임 수. 기본 5, 최대 10.",
+                    "minimum": 1,
+                    "maximum": 10,
+                },
+            },
+            "required": [],
+        },
+    },
+]
+
+ALL_TOOLS: list[dict] = WEB_TOOLS + MEMBER_TOOLS + RIOT_TOOLS + GAME_TOOLS + IMAGE_TOOLS
