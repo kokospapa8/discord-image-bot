@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import os
 import random
+import re
 
 import aiohttp
 import anthropic
@@ -21,6 +22,11 @@ from utils import member_memory, game_store
 from cogs.praise import parse_intent
 
 log = logging.getLogger(__name__)
+
+_IMAGE_URL_RE = re.compile(
+    r"https?://\S+\.(?:jpg|jpeg|png|gif|webp|avif)(?:[?#]\S*)?",
+    re.IGNORECASE,
+)
 
 _SYSTEM_PROMPT = """\
 [캐릭터]
@@ -73,6 +79,12 @@ _SYSTEM_PROMPT = """\
 - advice_mode T모드: 논리적, 직접적, 원인/해결책 위주. 공감보다 팩트와 조언.
 - advice_mode F모드(기본): 공감 먼저, "그랬구나", "힘들었겠다" 로 시작. 따뜻하게.
 - 모드 미설정 시 F모드로 대응
+
+[이미지 분석]
+- 사용자가 이미지를 첨부하거나 이미지 URL을 보낸 경우 볼 수 있어
+- "분석해줘", "설명해줘", "이거 뭐야", "봐줘", "어때" 등 분석 요청이 있을 때만 설명
+- 분석 요청이 없으면 이미지는 무시하고 텍스트 요청대로 처리 (예: 짤 검색)
+- 분석 시 미피 캐릭터로 재밌게, 2~4줄
 
 [게임 위시리스트 — 누구나 조회/수정/삭제 가능]
 - "게임 목록", "위시리스트", "안 해본 게임", "해본 게임" → get_game_list 호출
@@ -163,9 +175,20 @@ class ImageSearch(commands.Cog):
             content = content.replace(f"<@{self.bot.user.id}>", "").strip()
             content = content.replace(f"<@!{self.bot.user.id}>", "").strip()
 
-        if not content:
+        # Collect image URLs from attachments and text
+        image_urls: list[str] = [
+            att.url
+            for att in message.attachments
+            if att.content_type and att.content_type.startswith("image/")
+        ]
+        image_urls += _IMAGE_URL_RE.findall(content)
+        image_urls = image_urls[:4]  # Claude supports up to 4 images per request
+
+        if not content and not image_urls:
             await message.reply(random.choice(_EMPTY_REPLIES))
             return
+        if not content:
+            content = "이 이미지 봐줘"
 
         conv_logger.log_message(message)
 
@@ -206,6 +229,7 @@ class ImageSearch(commands.Cog):
                 author_ctx=author_ctx,
                 author_id=message.author.id,
                 author_name=message.author.display_name,
+                image_urls=image_urls,
             )
 
         if not results:
@@ -243,12 +267,22 @@ class ImageSearch(commands.Cog):
         author_ctx: str = "",
         author_id: int | None = None,
         author_name: str = "",
+        image_urls: list[str] | None = None,
     ) -> list[ResultItem]:
         system = _SYSTEM_PROMPT
         if author_ctx:
             system += f"\n\n[대화 상대 정보]\n{author_ctx}"
 
-        messages: list[dict] = [{"role": "user", "content": user_text}]
+        if image_urls:
+            user_content: list[dict] = [{"type": "text", "text": user_text}]
+            for url in image_urls:
+                user_content.append({
+                    "type": "image",
+                    "source": {"type": "url", "url": url},
+                })
+            messages: list[dict] = [{"role": "user", "content": user_content}]
+        else:
+            messages: list[dict] = [{"role": "user", "content": user_text}]
         try:
             response = await self._anthropic.messages.create(
                 model=self._model,
