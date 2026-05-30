@@ -56,6 +56,23 @@ _SYSTEM_PROMPT = """\
 - search_gif: 영어로 번역해서 검색 (Giphy는 영어 쿼리가 훨씬 좋음)
 - search_image: 한국어 그대로 (Naver 한국 콘텐츠 최적)
 
+[멤버 정보 자동 저장 — 반드시 감지]
+- 사용자가 MBTI, 사주, 성격/특징을 언급하면 반드시 save_member_info 호출
+  예: "나 INFP야" → save_member_info(field="mbti", value="INFP")
+  예: "내 사주 1995년 3월 14일 오전이야" → save_member_info(field="saju", value="1995년 3월 14일 오전")
+  예: "나 원래 말 없어" → save_member_info(field="keyword", value="말없음")
+- 고민상담 모드 변경 요청: "T모드로 바꿔줘", "F모드로 해줘" → save_member_info(field="advice_mode", value="T" or "F")
+- 저장 성공 후 미피 스타일로 짧게 확인 ("오오 저장했어!", "헉 기억해둘게 🐰" 등)
+
+[내 정보 조회]
+- "내 정보", "내 특징", "내 MBTI", "내 사주", "저장된 정보" 등 → get_my_info 호출
+- 다른 사람 정보 조회 요청은 거절: "앗 그건 못 건져오는 바다야 🫧"
+
+[고민상담 모드 — [대화 상대 정보]에 포함됨]
+- advice_mode T모드: 논리적, 직접적, 원인/해결책 위주. 공감보다 팩트와 조언.
+- advice_mode F모드(기본): 공감 먼저, "그랬구나", "힘들었겠다" 로 시작. 따뜻하게.
+- 모드 미설정 시 F모드로 대응
+
 [비검색 메시지]
 - 검색 의도가 전혀 없는 순수 대화만 텍스트로 응답, 1~2줄
 - 기능 안내 요청 시: 짤 찾기, 움짤 찾기 두 가지라고 미피 스타일로 짧게 소개
@@ -176,7 +193,12 @@ class ImageSearch(commands.Cog):
                     conv_logger.log_response(message.channel.id, guild_id, text)
                     return
 
-            results = await self._handle_llm(content, author_ctx=author_ctx)
+            results = await self._handle_llm(
+                content,
+                author_ctx=author_ctx,
+                author_id=message.author.id,
+                author_name=message.author.display_name,
+            )
 
         if not results:
             return
@@ -206,7 +228,14 @@ class ImageSearch(commands.Cog):
         for item in results[1:]:
             await _send(item, reply=False)
 
-    async def _handle_llm(self, user_text: str, *, author_ctx: str = "") -> list[ResultItem]:
+    async def _handle_llm(
+        self,
+        user_text: str,
+        *,
+        author_ctx: str = "",
+        author_id: int | None = None,
+        author_name: str = "",
+    ) -> list[ResultItem]:
         system = _SYSTEM_PROMPT
         if author_ctx:
             system += f"\n\n[대화 상대 정보]\n{author_ctx}"
@@ -247,26 +276,53 @@ class ImageSearch(commands.Cog):
             case "search_image":
                 return await self._search_naver_image(tool_block.input["query"], count=count)
             case "search_web":
-                return await self._handle_web_search(
-                    tool_block, messages, response, system
+                return await self._handle_tool_roundtrip(
+                    tool_block, messages, response, system,
+                    await self._search_brave(tool_block.input["query"]),
+                )
+            case "save_member_info":
+                result_text = self._do_save_member_info(
+                    tool_block.input, author_id, author_name
+                )
+                return await self._handle_tool_roundtrip(
+                    tool_block, messages, response, system, result_text
+                )
+            case "get_my_info":
+                info = member_memory.format_for_display(author_id, author_name) if author_id else ""
+                result_text = info if info else "저장된 정보가 없어."
+                return await self._handle_tool_roundtrip(
+                    tool_block, messages, response, system, result_text
                 )
             case _:
                 log.warning("Unknown tool: %s", tool_block.name)
                 return []
 
-    async def _handle_web_search(
+    def _do_save_member_info(
+        self, inp: dict, author_id: int | None, author_name: str
+    ) -> str:
+        if author_id is None:
+            return "저장 실패: 사용자 ID 없음"
+        field = inp.get("field", "")
+        value = inp.get("value", "").strip()
+        if not value:
+            return "저장 실패: 값이 비어있음"
+        if field == "keyword":
+            member_memory.add_keyword(author_id, author_name, value)
+        else:
+            member_memory.set_field(author_id, author_name, field, value)
+        log.info("saved member info: id=%s field=%s value=%r", author_id, field, value)
+        return "저장됨"
+
+    async def _handle_tool_roundtrip(
         self,
         tool_block,  # noqa: ANN001
         messages: list[dict],
         first_response,  # noqa: ANN001
         system: str,
+        tool_result: str,
     ) -> list[ResultItem]:
-        """Execute web search and feed results back to Claude for synthesis."""
-        query = tool_block.input["query"]
-        log.info("web search: %r", query)
-        search_text = await self._search_brave(query)
-
-        messages = messages + [
+        """Feed a tool result back to Claude and return its synthesized text."""
+        next_messages = messages + [
             {"role": "assistant", "content": first_response.content},
             {
                 "role": "user",
@@ -274,7 +330,7 @@ class ImageSearch(commands.Cog):
                     {
                         "type": "tool_result",
                         "tool_use_id": tool_block.id,
-                        "content": search_text,
+                        "content": tool_result,
                     }
                 ],
             },
@@ -285,14 +341,14 @@ class ImageSearch(commands.Cog):
                 max_tokens=512,
                 system=system,
                 tools=ALL_TOOLS,  # type: ignore[arg-type]
-                messages=messages,
+                messages=next_messages,
             )
         except anthropic.APIError as exc:
-            log.exception("Anthropic API error (web search synthesis)")
-            return [f"앗 검색은 됐는데 정리가 안 됐어… (오류: {exc})"]
+            log.exception("Anthropic API error (tool roundtrip)")
+            return [f"앗 뭔가 잘못됐어… (오류: {exc})"]
 
         text_block = next((b for b in response2.content if b.type == "text"), None)
-        return [text_block.text] if text_block else ["앗 검색 결과를 못 가져왔어 🫧"]
+        return [text_block.text] if text_block else ["앗 결과를 못 가져왔어 🫧"]
 
     async def _search_brave(self, query: str) -> str:
         if not self.brave_api_key:

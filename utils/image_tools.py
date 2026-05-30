@@ -76,4 +76,46 @@ IMAGE_TOOLS: list[dict] = [
 ]
 
 
-ALL_TOOLS: list[dict] = WEB_TOOLS + IMAGE_TOOLS
+MEMBER_TOOLS: list[dict] = [
+    {
+        "name": "save_member_info",
+        "description": (
+            "사용자가 자신의 개인정보를 공유하거나 설정을 변경할 때 저장. "
+            "MBTI: '나 INFP야', '내 MBTI는 ESTJ' → field=mbti. "
+            "사주: '내 사주가 1995년 3월생이야' → field=saju. "
+            "특징/성격: '나 원래 말 없어', '나 음식 잘 먹음' → field=keyword, 핵심 키워드 1~3단어로 추출. "
+            "고민상담 모드: 'T모드로 바꿔줘', 'F모드로 해줘' → field=advice_mode, value='T' or 'F'. "
+            "저장 후 미피 캐릭터로 짧게 확인 응답."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "field": {
+                    "type": "string",
+                    "enum": ["mbti", "saju", "keyword", "advice_mode"],
+                    "description": "저장할 필드 종류. advice_mode는 'T' 또는 'F'.",
+                },
+                "value": {
+                    "type": "string",
+                    "description": "저장할 값. keyword는 핵심 단어로 압축. advice_mode는 'T' 또는 'F'.",
+                },
+            },
+            "required": ["field", "value"],
+        },
+    },
+    {
+        "name": "get_my_info",
+        "description": (
+            "사용자가 자신의 저장된 정보를 물을 때 조회. "
+            "예: '내 정보 알려줘', '내 특징 뭐야', '내 MBTI 뭐라고 저장돼있어'. "
+            "본인 정보만 조회 가능. 다른 사람 정보 조회 요청은 거절."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+]
+
+ALL_TOOLS: list[dict] = WEB_TOOLS + MEMBER_TOOLS + IMAGE_TOOLS

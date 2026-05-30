@@ -57,4 +57,25 @@ def context_str(member_id: int, fallback_name: str) -> str:
         parts.append(f"MBTI: {data['mbti']}")
     if data.get("saju"):
         parts.append(f"사주: {data['saju']}")
+    if data.get("advice_mode"):
+        parts.append(f"고민상담 모드: {data['advice_mode']}모드")
+    return "\n".join(parts)
+
+
+def format_for_display(member_id: int, fallback_name: str) -> str:
+    """Human-readable info for the user to see."""
+    data = load(member_id)
+    if not data:
+        return ""
+    parts = []
+    if data.get("keywords"):
+        parts.append(f"특징: {', '.join(data['keywords'])}")
+    if data.get("mbti"):
+        parts.append(f"MBTI: {data['mbti']}")
+    if data.get("saju"):
+        parts.append(f"사주: {data['saju']}")
+    if data.get("advice_mode"):
+        mode = data["advice_mode"]
+        label = "논리/팩트형" if mode == "T" else "공감/감성형"
+        parts.append(f"고민상담 모드: {mode}모드 ({label})")
     return "\n".join(parts)
