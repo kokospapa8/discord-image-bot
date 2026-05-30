@@ -20,6 +20,7 @@ log = logging.getLogger(__name__)
 
 COGS = [
     "cogs.praise",
+    "cogs.game_wishlist",
     "cogs.image_search",
     "cogs.version_announce",
 ]

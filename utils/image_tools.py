@@ -118,4 +118,64 @@ MEMBER_TOOLS: list[dict] = [
     },
 ]
 
-ALL_TOOLS: list[dict] = WEB_TOOLS + MEMBER_TOOLS + IMAGE_TOOLS
+GAME_TOOLS: list[dict] = [
+    {
+        "name": "get_game_list",
+        "description": (
+            "저장된 스팀 게임 위시리스트 조회. "
+            "'게임 목록', '게임 리스트', '안 해본 게임', '해본 게임', '위시리스트' 등 요청 시 사용."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "filter": {
+                    "type": "string",
+                    "enum": ["all", "unplayed", "played"],
+                    "description": "all=전체, unplayed=미플레이만, played=플레이완료만. 기본 all.",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "mark_game_played",
+        "description": (
+            "게임 플레이 여부 업데이트. "
+            "'X 해봤어', 'X 했어', 'X 완료' → played=true. "
+            "'X 안 해봤어로 되돌려줘' → played=false."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "game_name": {
+                    "type": "string",
+                    "description": "게임 이름 (부분 일치 허용) 또는 Steam appid.",
+                },
+                "played": {
+                    "type": "boolean",
+                    "description": "true=플레이완료, false=미플레이로 되돌리기. 기본 true.",
+                },
+            },
+            "required": ["game_name"],
+        },
+    },
+    {
+        "name": "get_game_link",
+        "description": (
+            "특정 게임의 스팀 링크 반환. "
+            "'X 링크', 'X 스팀 주소', 'X 어디서 사' 등 요청 시 사용."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "game_name": {
+                    "type": "string",
+                    "description": "게임 이름 (부분 일치 허용) 또는 Steam appid.",
+                },
+            },
+            "required": ["game_name"],
+        },
+    },
+]
+
+ALL_TOOLS: list[dict] = WEB_TOOLS + MEMBER_TOOLS + GAME_TOOLS + IMAGE_TOOLS

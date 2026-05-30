@@ -17,7 +17,7 @@ from discord.ext import commands
 
 from utils.image_tools import ALL_TOOLS
 from utils.conversation import logger as conv_logger
-from utils import member_memory
+from utils import member_memory, game_store
 from cogs.praise import parse_intent
 
 log = logging.getLogger(__name__)
@@ -72,6 +72,12 @@ _SYSTEM_PROMPT = """\
 - advice_mode T모드: 논리적, 직접적, 원인/해결책 위주. 공감보다 팩트와 조언.
 - advice_mode F모드(기본): 공감 먼저, "그랬구나", "힘들었겠다" 로 시작. 따뜻하게.
 - 모드 미설정 시 F모드로 대응
+
+[게임 위시리스트]
+- "게임 목록", "위시리스트", "안 해본 게임", "해본 게임" → get_game_list 호출
+- "X 해봤어", "X 완료", "X 했어" → mark_game_played(game_name=X, played=true)
+- "X 링크", "X 스팀 주소" → get_game_link(game_name=X)
+- 결과를 미피 스타일로 자연스럽게 안내
 
 [비검색 메시지]
 - 검색 의도가 전혀 없는 순수 대화만 텍스트로 응답, 1~2줄
@@ -290,6 +296,30 @@ class ImageSearch(commands.Cog):
             case "get_my_info":
                 info = member_memory.format_for_display(author_id, author_name) if author_id else ""
                 result_text = info if info else "저장된 정보가 없어."
+                return await self._handle_tool_roundtrip(
+                    tool_block, messages, response, system, result_text
+                )
+            case "get_game_list":
+                filter_ = tool_block.input.get("filter", "all")
+                result_text = game_store.format_list(filter_)
+                return await self._handle_tool_roundtrip(
+                    tool_block, messages, response, system, result_text
+                )
+            case "mark_game_played":
+                game_name = tool_block.input.get("game_name", "")
+                played = bool(tool_block.input.get("played", True))
+                found = game_store.mark_played(game_name, played)
+                result_text = f"완료: {found}" if found else f"'{game_name}' 를 목록에서 못 찾았어."
+                return await self._handle_tool_roundtrip(
+                    tool_block, messages, response, system, result_text
+                )
+            case "get_game_link":
+                game_name = tool_block.input.get("game_name", "")
+                game = game_store.find_game(game_name)
+                if game:
+                    result_text = f"{game['name']}: {game['url']}"
+                else:
+                    result_text = f"'{game_name}' 를 목록에서 못 찾았어."
                 return await self._handle_tool_roundtrip(
                     tool_block, messages, response, system, result_text
                 )
