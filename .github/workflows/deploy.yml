@@ -57,13 +57,14 @@ jobs:
 
       - name: Sync .env to EC2 via SSM
         run: |
-          ENV_B64=$(printf 'DISCORD_TOKEN=%s\nDISCORD_CHANNEL_ID=%s\nANTHROPIC_API_KEY=%s\nGIPHY_API_KEY=%s\nNAVER_CLIENT_ID=%s\nNAVER_CLIENT_SECRET=%s\n' \
+          ENV_B64=$(printf 'DISCORD_TOKEN=%s\nDISCORD_CHANNEL_ID=%s\nANTHROPIC_API_KEY=%s\nGIPHY_API_KEY=%s\nNAVER_CLIENT_ID=%s\nNAVER_CLIENT_SECRET=%s\nBRAVE_SEARCH_API_KEY=%s\n' \
             '${{ secrets.DISCORD_TOKEN }}' \
             '${{ secrets.DISCORD_CHANNEL_ID }}' \
             '${{ secrets.ANTHROPIC_API_KEY }}' \
             '${{ secrets.GIPHY_API_KEY }}' \
             '${{ secrets.NAVER_CLIENT_ID }}' \
             '${{ secrets.NAVER_CLIENT_SECRET }}' \
+            '${{ secrets.BRAVE_SEARCH_API_KEY }}' \
             | base64 -w0)
 
           CMD_ID=$(aws ssm send-command \

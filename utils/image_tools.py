@@ -1,3 +1,26 @@
+WEB_TOOLS: list[dict] = [
+    {
+        "name": "search_web",
+        "description": (
+            "인터넷 웹 검색 — Brave Search 사용. "
+            "최신 정보, 뉴스, 날씨, 사실 확인, 사람/장소/이벤트 정보 등 실시간 정보가 필요할 때 사용. "
+            "이미지나 움짤 요청에는 사용하지 말 것. "
+            "운세, 궁합, 사주 해석 등은 검색하지 말고 LLM이 직접 생성. "
+            "쿼리는 핵심 키워드로 간결하게."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "검색어. 핵심 키워드 위주로. 예: '이재명 오늘 뉴스', '서울 날씨 오늘'.",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+]
+
 IMAGE_TOOLS: list[dict] = [
     {
         "name": "search_gif",
@@ -51,3 +74,6 @@ IMAGE_TOOLS: list[dict] = [
         },
     },
 ]
+
+
+ALL_TOOLS: list[dict] = WEB_TOOLS + IMAGE_TOOLS

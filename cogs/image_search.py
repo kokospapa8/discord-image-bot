@@ -15,7 +15,10 @@ import anthropic
 import discord
 from discord.ext import commands
 
-from utils.image_tools import IMAGE_TOOLS
+from utils.image_tools import ALL_TOOLS
+from utils.conversation import logger as conv_logger
+from utils import member_memory
+from cogs.praise import parse_intent
 
 log = logging.getLogger(__name__)
 
@@ -100,12 +103,19 @@ class ImageSearch(commands.Cog):
         self.giphy_api_key = os.environ.get("GIPHY_API_KEY", "")
         self.naver_client_id = os.environ.get("NAVER_CLIENT_ID", "")
         self.naver_client_secret = os.environ.get("NAVER_CLIENT_SECRET", "")
+        self.brave_api_key = os.environ.get("BRAVE_SEARCH_API_KEY", "")
         self._anthropic = anthropic.AsyncAnthropic(
             api_key=os.environ["ANTHROPIC_API_KEY"]
         )
         self._model = os.getenv("CLAUDE_MODEL", "claude-haiku-4-5-20251001")
         raw = os.getenv("DISCORD_CHANNEL_ID", "").strip()
         self._image_channel_id: int | None = int(raw) if raw.isdigit() else None
+
+    def cog_load(self) -> None:
+        conv_logger.start()
+
+    def cog_unload(self) -> None:
+        conv_logger.stop()
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message) -> None:
@@ -132,8 +142,41 @@ class ImageSearch(commands.Cog):
             await message.reply(random.choice(_EMPTY_REPLIES))
             return
 
+        conv_logger.log_message(message)
+
+        author_ctx = member_memory.context_str(message.author.id, message.author.display_name)
+        guild_id = message.guild.id if message.guild else None
+
         async with message.channel.typing():
-            results = await self._handle_llm(content)
+            # Praise / roast
+            praise_intent = parse_intent(content)
+            if praise_intent:
+                praise_cog = self.bot.cogs.get("Praise")
+                if praise_cog:
+                    name, kind = praise_intent
+                    recent = conv_logger.recent_str(message.channel.id)
+                    text = await praise_cog.generate(name, kind, message.guild, recent)
+                    await message.reply(text)
+                    conv_logger.log_response(message.channel.id, guild_id, text)
+                    return
+
+            # 오늘의 운세
+            if "운세" in content:
+                praise_cog = self.bot.cogs.get("Praise")
+                if praise_cog:
+                    mem = member_memory.load(message.author.id)
+                    saju = mem.get("saju")
+                    if not saju:
+                        text = f"앗 사주 정보가 없어! `!사주등록 {message.author.display_name} <사주>` 로 등록해줘 🐰"
+                    else:
+                        from datetime import date
+                        today_str = date.today().strftime("%Y년 %m월 %d일")
+                        text = await praise_cog.generate_fortune(saju, message.author.display_name, today_str)
+                    await message.reply(text)
+                    conv_logger.log_response(message.channel.id, guild_id, text)
+                    return
+
+            results = await self._handle_llm(content, author_ctx=author_ctx)
 
         if not results:
             return
@@ -145,29 +188,37 @@ class ImageSearch(commands.Cog):
                     await message.reply(content=text, embed=embed)
                 else:
                     await message.channel.send(content=text, embed=embed)
+                conv_logger.log_response(message.channel.id, guild_id, text)
             elif isinstance(item, discord.Embed):
                 if reply:
                     await message.reply(embed=item)
                 else:
                     await message.channel.send(embed=item)
+                conv_logger.log_response(message.channel.id, guild_id, "[이미지]")
             else:
                 if reply:
                     await message.reply(str(item))
                 else:
                     await message.channel.send(str(item))
+                conv_logger.log_response(message.channel.id, guild_id, str(item))
 
         await _send(results[0], reply=True)
         for item in results[1:]:
             await _send(item, reply=False)
 
-    async def _handle_llm(self, user_text: str) -> list[ResultItem]:
+    async def _handle_llm(self, user_text: str, *, author_ctx: str = "") -> list[ResultItem]:
+        system = _SYSTEM_PROMPT
+        if author_ctx:
+            system += f"\n\n[대화 상대 정보]\n{author_ctx}"
+
+        messages: list[dict] = [{"role": "user", "content": user_text}]
         try:
             response = await self._anthropic.messages.create(
                 model=self._model,
                 max_tokens=512,
-                system=_SYSTEM_PROMPT,
-                tools=IMAGE_TOOLS,  # type: ignore[arg-type]
-                messages=[{"role": "user", "content": user_text}],
+                system=system,
+                tools=ALL_TOOLS,  # type: ignore[arg-type]
+                messages=messages,
             )
         except anthropic.APIError as exc:
             log.exception("Anthropic API error")
@@ -195,9 +246,86 @@ class ImageSearch(commands.Cog):
                 return await self._search_giphy(tool_block.input["query"], count=count)
             case "search_image":
                 return await self._search_naver_image(tool_block.input["query"], count=count)
+            case "search_web":
+                return await self._handle_web_search(
+                    tool_block, messages, response, system
+                )
             case _:
                 log.warning("Unknown tool: %s", tool_block.name)
                 return []
+
+    async def _handle_web_search(
+        self,
+        tool_block,  # noqa: ANN001
+        messages: list[dict],
+        first_response,  # noqa: ANN001
+        system: str,
+    ) -> list[ResultItem]:
+        """Execute web search and feed results back to Claude for synthesis."""
+        query = tool_block.input["query"]
+        log.info("web search: %r", query)
+        search_text = await self._search_brave(query)
+
+        messages = messages + [
+            {"role": "assistant", "content": first_response.content},
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": tool_block.id,
+                        "content": search_text,
+                    }
+                ],
+            },
+        ]
+        try:
+            response2 = await self._anthropic.messages.create(
+                model=self._model,
+                max_tokens=512,
+                system=system,
+                tools=ALL_TOOLS,  # type: ignore[arg-type]
+                messages=messages,
+            )
+        except anthropic.APIError as exc:
+            log.exception("Anthropic API error (web search synthesis)")
+            return [f"앗 검색은 됐는데 정리가 안 됐어… (오류: {exc})"]
+
+        text_block = next((b for b in response2.content if b.type == "text"), None)
+        return [text_block.text] if text_block else ["앗 검색 결과를 못 가져왔어 🫧"]
+
+    async def _search_brave(self, query: str) -> str:
+        if not self.brave_api_key:
+            return "BRAVE_SEARCH_API_KEY가 없어서 검색 못 했어."
+
+        headers = {
+            "Accept": "application/json",
+            "Accept-Encoding": "gzip",
+            "X-Subscription-Token": self.brave_api_key,
+        }
+        params = {"q": query, "count": 5, "lang": "ko"}
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                "https://api.search.brave.com/res/v1/web/search",
+                headers=headers,
+                params=params,
+            ) as resp:
+                if resp.status != 200:
+                    log.error("Brave Search API error: %s", resp.status)
+                    return f"검색 API 오류 (status {resp.status})"
+                data = await resp.json(content_type=None)
+
+        results = data.get("web", {}).get("results", [])
+        if not results:
+            return "검색 결과가 없어."
+
+        lines = []
+        for i, r in enumerate(results[:5], 1):
+            title = r.get("title", "")
+            desc = r.get("description", "")
+            url = r.get("url", "")
+            lines.append(f"{i}. {title}\n{desc}\n{url}")
+        return "\n\n".join(lines)
 
     async def _search_giphy(self, query: str, count: int = 1) -> list[ResultItem]:
         if not self.giphy_api_key:
