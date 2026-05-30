@@ -21,7 +21,7 @@ from discord.ext import commands
 
 from utils.image_tools import ALL_TOOLS
 from utils.conversation import logger as conv_logger
-from utils import member_memory, game_store, riot_api
+from utils import member_memory, game_store, riot_api, bot_config
 from cogs.praise import parse_intent
 
 log = logging.getLogger(__name__)
@@ -64,6 +64,10 @@ _SYSTEM_PROMPT = """\
 [검색 쿼리 규칙]
 - search_gif: 영어로 번역해서 검색 (Giphy는 영어 쿼리가 훨씬 좋음)
 - search_image: 한국어 그대로 (Naver 한국 콘텐츠 최적)
+
+[글로벌 모드 변경]
+- "글로벌 T모드", "봇 전체 T모드로 바꿔", "미피 F모드 설정" 등 → set_global_mode 호출
+- 변경 후 미피 스타일로 짧게 확인
 
 [멤버 정보 자동 저장/조회/삭제 — 본인만]
 - 사용자가 MBTI, 사주, 성격/특징을 언급하면 반드시 save_member_info 호출
@@ -282,7 +286,12 @@ class ImageSearch(commands.Cog):
         image_urls: list[str] | None = None,
     ) -> list[ResultItem]:
         now_str = datetime.now(_KST).strftime("%Y년 %m월 %d일 %H:%M KST")
-        system = f"[현재 시각] {now_str}\n\n{_SYSTEM_PROMPT}"
+        global_mode = bot_config.get_mode()
+        if global_mode == "T":
+            mode_instr = "[글로벌 모드: T] 논리적·직접적·간결하게. 감정 표현 최소화. 팩트와 해결책 중심."
+        else:
+            mode_instr = "[글로벌 모드: F] 공감 우선·따뜻하게. 상대 감정 반영. 위로와 지지 중심."
+        system = f"[현재 시각] {now_str}\n{mode_instr}\n\n{_SYSTEM_PROMPT}"
         if author_ctx:
             system += f"\n\n[대화 상대 정보]\n{author_ctx}"
 
@@ -366,6 +375,11 @@ class ImageSearch(commands.Cog):
     async def _execute_tool(self, tb, author_id: int | None, author_name: str) -> str:  # noqa: ANN001
         """Execute a single tool_use block and return its result as a string."""
         match tb.name:
+            case "set_global_mode":
+                mode = tb.input.get("mode", "F").upper()
+                bot_config.set_mode(mode)
+                log.info("global mode set to %s", mode)
+                return f"{mode}모드로 변경됨"
             case "search_web":
                 return await self._search_brave(tb.input["query"])
             case "save_member_info":

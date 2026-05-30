@@ -76,6 +76,28 @@ IMAGE_TOOLS: list[dict] = [
 ]
 
 
+CONFIG_TOOLS: list[dict] = [
+    {
+        "name": "set_global_mode",
+        "description": (
+            "미피 봇 전체의 대화 스타일을 T/F 모드로 변경. "
+            "'글로벌 T모드로 바꿔줘', '봇 전체 F모드', '미피 T모드 설정' 등. "
+            "T=논리/직접/간결, F=공감/따뜻함(기본)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "mode": {
+                    "type": "string",
+                    "enum": ["T", "F"],
+                    "description": "T=논리형, F=공감형",
+                },
+            },
+            "required": ["mode"],
+        },
+    },
+]
+
 MEMBER_TOOLS: list[dict] = [
     {
         "name": "save_member_info",
@@ -247,4 +269,4 @@ RIOT_TOOLS: list[dict] = [
     },
 ]
 
-ALL_TOOLS: list[dict] = WEB_TOOLS + MEMBER_TOOLS + RIOT_TOOLS + GAME_TOOLS + IMAGE_TOOLS
+ALL_TOOLS: list[dict] = CONFIG_TOOLS + WEB_TOOLS + MEMBER_TOOLS + RIOT_TOOLS + GAME_TOOLS + IMAGE_TOOLS
