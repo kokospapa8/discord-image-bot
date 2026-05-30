@@ -237,7 +237,7 @@ class ImageSearch(commands.Cog):
                     try:
                         flavor = await self._anthropic.messages.create(
                             model=self._model,
-                            max_tokens=300,
+                            max_tokens=1024,
                             system=(
                                 f"[현재 시각] {datetime.now(_KST).strftime('%Y년 %m월 %d일 %H:%M KST')}\n"
                                 "너는 미피(Miffy). 하얀 토끼 해녀. 아래 롤 전적 데이터를 보고 "
@@ -338,7 +338,7 @@ class ImageSearch(commands.Cog):
         try:
             response = await self._anthropic.messages.create(
                 model=self._model,
-                max_tokens=512,
+                max_tokens=1024,
                 system=system,
                 tools=ALL_TOOLS,  # type: ignore[arg-type]
                 messages=messages,
@@ -390,7 +390,7 @@ class ImageSearch(commands.Cog):
         try:
             response2 = await self._anthropic.messages.create(
                 model=self._model,
-                max_tokens=512,
+                max_tokens=1024,
                 system=system,
                 tools=ALL_TOOLS,  # type: ignore[arg-type]
                 messages=next_messages,

@@ -141,7 +141,7 @@ class Praise(commands.Cog):
         try:
             resp = await self._anthropic.messages.create(
                 model=self._model,
-                max_tokens=256,
+                max_tokens=512,
                 system=system,
                 messages=[{"role": "user", "content": user_msg}],
             )
@@ -164,7 +164,7 @@ class Praise(commands.Cog):
         try:
             resp = await self._anthropic.messages.create(
                 model=self._model,
-                max_tokens=500,
+                max_tokens=1024,
                 system=_FORTUNE_SYSTEM,
                 messages=[{"role": "user", "content": user_msg}],
             )
