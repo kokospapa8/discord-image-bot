@@ -10,6 +10,9 @@ import logging
 import os
 import random
 import re
+from datetime import datetime, timezone, timedelta
+
+_KST = timezone(timedelta(hours=9))
 
 import aiohttp
 import anthropic
@@ -99,13 +102,15 @@ _SYSTEM_PROMPT = """\
 - "X 지워줘", "X 삭제해줘" → delete_game(game_name=X)
 - 결과를 미피 스타일로 자연스럽게 안내
 
-[비검색 메시지]
-- 검색 의도가 전혀 없는 순수 대화만 텍스트로 응답, 1~2줄
-- 기능 안내 요청 시: 짤 찾기, 움짤 찾기 두 가지라고 미피 스타일로 짧게 소개
+[일반 대화]
+- 잡담, 질문, 인사 등 → 미피 캐릭터로 자유롭게 대화, 1~2줄
+- 날씨, 뉴스, 주가, 환율, 실시간 정보 → search_web으로 검색 후 답변
+- "지금 몇시야", "오늘 날짜" → [현재 시각] 참고해서 바로 답변
+- 기능 소개 요청 시: 짤/움짤/전적/게임 위시리스트 등을 미피 스타일로 짧게
 
-[위험하거나 부적절한 검색 요청]
-- 귀엽게 제지
-- 예: "앗 그건 미피가 못 건져오는 바다야 🫧"
+[제지 — 성인·폭력·불법 콘텐츠 요청에만 적용]
+- "앗 그건 미피가 못 건져오는 바다야 🫧"
+- 날씨·뉴스·일반 대화에는 절대 이 응답 쓰지 말 것
 """
 
 _GIF_REACTIONS = [
@@ -276,7 +281,8 @@ class ImageSearch(commands.Cog):
         author_name: str = "",
         image_urls: list[str] | None = None,
     ) -> list[ResultItem]:
-        system = _SYSTEM_PROMPT
+        now_str = datetime.now(_KST).strftime("%Y년 %m월 %d일 %H:%M KST")
+        system = f"[현재 시각] {now_str}\n\n{_SYSTEM_PROMPT}"
         if author_ctx:
             system += f"\n\n[대화 상대 정보]\n{author_ctx}"
 
