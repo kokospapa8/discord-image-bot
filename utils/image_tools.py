@@ -114,12 +114,17 @@ MEMBER_TOOLS: list[dict] = [
             "properties": {
                 "field": {
                     "type": "string",
-                    "enum": ["mbti", "saju", "keyword", "advice_mode", "riot_id"],
-                    "description": "저장할 필드 종류. advice_mode는 'T'/'F'. riot_id는 'Name#Tag' 형식.",
+                    "enum": ["mbti", "saju", "saju_detail", "keyword", "advice_mode", "riot_id"],
+                    "description": (
+                        "저장할 필드 종류. "
+                        "saju=생년월일 등 기본 사주 텍스트. "
+                        "saju_detail=년주/월주/일주/시주/오행/십신/대운 등 상세 사주 전체 블록(원문 그대로). "
+                        "advice_mode는 'T'/'F'. riot_id는 'Name#Tag' 형식."
+                    ),
                 },
                 "value": {
                     "type": "string",
-                    "description": "저장할 값. riot_id는 'Hide#KR1' 같은 형식. keyword는 핵심 단어로 압축.",
+                    "description": "저장할 값. saju_detail은 사주 원문 블록 전체를 그대로 저장.",
                 },
             },
             "required": ["field", "value"],
@@ -151,7 +156,7 @@ MEMBER_TOOLS: list[dict] = [
             "properties": {
                 "field": {
                     "type": "string",
-                    "enum": ["mbti", "saju", "keyword", "advice_mode", "riot_id", "all"],
+                    "enum": ["mbti", "saju", "saju_detail", "keyword", "advice_mode", "riot_id", "all"],
                     "description": "삭제할 필드. all이면 전체 삭제.",
                 },
                 "value": {

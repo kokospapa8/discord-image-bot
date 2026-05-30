@@ -76,7 +76,7 @@ def set_field(member_id: int, display_name: str, field: str, value: str) -> None
 
 
 def context_str(member_id: int, fallback_name: str) -> str:
-    """Formatted context string for Claude."""
+    """Formatted context string for Claude (conversation context, brief)."""
     data = load(member_id)
     if not data:
         return ""
@@ -85,11 +85,19 @@ def context_str(member_id: int, fallback_name: str) -> str:
         parts.append(f"특징: {', '.join(data['keywords'][-5:])}")
     if data.get("mbti"):
         parts.append(f"MBTI: {data['mbti']}")
-    if data.get("saju"):
+    if data.get("saju_detail"):
+        parts.append(f"[상세 사주 있음]")
+    elif data.get("saju"):
         parts.append(f"사주: {data['saju']}")
     if data.get("advice_mode"):
         parts.append(f"고민상담 모드: {data['advice_mode']}모드")
     return "\n".join(parts)
+
+
+def get_saju_for_fortune(member_id: int) -> tuple[str, str]:
+    """Returns (saju_basic, saju_detail). Either may be empty."""
+    data = load(member_id)
+    return data.get("saju", ""), data.get("saju_detail", "")
 
 
 def format_for_display(member_id: int, fallback_name: str) -> str:
@@ -104,6 +112,8 @@ def format_for_display(member_id: int, fallback_name: str) -> str:
         parts.append(f"MBTI: {data['mbti']}")
     if data.get("saju"):
         parts.append(f"사주: {data['saju']}")
+    if data.get("saju_detail"):
+        parts.append("상세 사주: 등록됨 (년주/월주/일주/시주/오행/십신/대운 포함)")
     if data.get("advice_mode"):
         mode = data["advice_mode"]
         label = "논리/팩트형" if mode == "T" else "공감/감성형"

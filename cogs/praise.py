@@ -151,12 +151,20 @@ class Praise(commands.Cog):
             log.exception("Anthropic API error in praise/roast")
             return f"앗 뭔가 잘못됐어… (오류: {exc})"
 
-    async def generate_fortune(self, saju: str, member_name: str, today: str) -> str:
-        user_msg = f"오늘 날짜: {today}\n이름: {member_name}\n사주: {saju}\n\n오늘의 운세를 봐줘."
+    async def generate_fortune(
+        self, saju: str, member_name: str, today: str, saju_detail: str = ""
+    ) -> str:
+        if saju_detail:
+            user_msg = (
+                f"오늘 날짜: {today}\n이름: {member_name}\n\n"
+                f"[상세 사주 정보]\n{saju_detail}\n\n오늘의 운세를 봐줘."
+            )
+        else:
+            user_msg = f"오늘 날짜: {today}\n이름: {member_name}\n사주: {saju}\n\n오늘의 운세를 봐줘."
         try:
             resp = await self._anthropic.messages.create(
                 model=self._model,
-                max_tokens=300,
+                max_tokens=500,
                 system=_FORTUNE_SYSTEM,
                 messages=[{"role": "user", "content": user_msg}],
             )

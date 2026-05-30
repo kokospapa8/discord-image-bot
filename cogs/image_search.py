@@ -75,6 +75,7 @@ _SYSTEM_PROMPT = """\
   예: "내 사주 1995년 3월 14일 오전이야" → save_member_info(field="saju", value="1995년 3월 14일 오전")
   예: "나 원래 말 없어" → save_member_info(field="keyword", value="말없음")
 - 고민상담 모드 변경 요청: "T모드로 바꿔줘", "F모드로 해줘" → save_member_info(field="advice_mode", value="T" or "F")
+- 상세 사주 블록 (년주/월주/일주/시주/오행/십신/대운 등 여러 줄) → save_member_info(field="saju_detail", value=<원문 전체>)
 - 저장 성공 후 미피 스타일로 짧게 확인 ("오오 저장했어!", "헉 기억해둘게 🐰" 등)
 
 [내 정보 조회]
@@ -228,14 +229,14 @@ class ImageSearch(commands.Cog):
             if "운세" in content:
                 praise_cog = self.bot.cogs.get("Praise")
                 if praise_cog:
-                    mem = member_memory.load(message.author.id)
-                    saju = mem.get("saju")
-                    if not saju:
-                        text = f"앗 사주 정보가 없어! `!사주등록 {message.author.display_name} <사주>` 로 등록해줘 🐰"
+                    saju, saju_detail = member_memory.get_saju_for_fortune(message.author.id)
+                    if not saju and not saju_detail:
+                        text = "앗 사주 정보가 없어! '내 사주는 1995년 3월 14일 오전이야' 처럼 알려줘 🐰"
                     else:
-                        from datetime import date
-                        today_str = date.today().strftime("%Y년 %m월 %d일")
-                        text = await praise_cog.generate_fortune(saju, message.author.display_name, today_str)
+                        today_str = datetime.now(_KST).strftime("%Y년 %m월 %d일")
+                        text = await praise_cog.generate_fortune(
+                            saju, message.author.display_name, today_str, saju_detail
+                        )
                     await message.reply(text)
                     conv_logger.log_response(message.channel.id, guild_id, text)
                     return
