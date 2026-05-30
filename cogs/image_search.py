@@ -142,6 +142,9 @@ _EMPTY_REPLIES = [
     "앗 검색어가 없어… 뭐 건져올까?",
 ]
 
+# Pre-route keywords — bypass LLM tool confusion
+_LOL_KEYWORDS = {"전적", "게임전적", "롤전적", "롤 전적", "게임 전적", "lol전적", "lol 전적"}
+
 # Claude가 툴을 안 부를 때 강제 검색 트리거 키워드
 _GIF_KEYWORDS   = {"움짤", "gif", "GIF", "짤방"}
 _IMAGE_KEYWORDS = {"짤", "사진", "이미지", "그림", "포스터"}
@@ -224,6 +227,32 @@ class ImageSearch(commands.Cog):
                     await message.reply(text)
                     conv_logger.log_response(message.channel.id, guild_id, text)
                     return
+
+            # LoL 전적 — pre-route to skip LLM tool confusion
+            if any(kw in content for kw in _LOL_KEYWORDS):
+                stats = await self._fetch_lol_stats({}, message.author.id)
+                if "등록되지 않았어" in stats or "API_KEY" in stats:
+                    text = stats
+                else:
+                    try:
+                        flavor = await self._anthropic.messages.create(
+                            model=self._model,
+                            max_tokens=300,
+                            system=(
+                                f"[현재 시각] {datetime.now(_KST).strftime('%Y년 %m월 %d일 %H:%M KST')}\n"
+                                "너는 미피(Miffy). 하얀 토끼 해녀. 아래 롤 전적 데이터를 보고 "
+                                "미피 스타일로 짧게 소개해줘. 전적 수치는 그대로 포함. "
+                                "잘하면 칭찬, 못하면 따뜻하게 위로."
+                            ),
+                            messages=[{"role": "user", "content": stats}],
+                        )
+                        tb = next((b for b in flavor.content if b.type == "text"), None)
+                        text = tb.text if tb else stats
+                    except anthropic.APIError:
+                        text = stats
+                await message.reply(text)
+                conv_logger.log_response(message.channel.id, guild_id, text[:500])
+                return
 
             # 오늘의 운세
             if "운세" in content:
