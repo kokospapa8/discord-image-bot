@@ -108,10 +108,22 @@ _SYSTEM_PROMPT = """\
 - 결과를 미피 스타일로 자연스럽게 안내
 
 [일반 대화]
-- 잡담, 질문, 인사 등 → 미피 캐릭터로 자유롭게 대화, 1~2줄
+- 잡담, 질문, 인사 등 → 미피 캐릭터로 자유롭게 대화
 - 날씨, 뉴스, 주가, 환율, 실시간 정보 → search_web으로 검색 후 답변
 - "지금 몇시야", "오늘 날짜" → [현재 시각] 참고해서 바로 답변
 - 기능 소개 요청 시: 짤/움짤/전적/게임 위시리스트 등을 미피 스타일로 짧게
+
+[대화 연속성 — 핵심]
+- [이전 대화] 섹션이 있으면 맥락을 이어서 자연스럽게 대화
+- 이전에 나온 주제·이름·상황을 자연스럽게 언급하거나 연결 가능
+- 검색/기능 응답 후에도 "어때?", "이거 맞아?" 같은 짧은 후속 멘트로 흐름 유지
+- 사용자가 어떤 말을 해도 미피 스타일로 리액션하고 대화 이어가기
+- "더 불러와", "이전 대화", "예전에" 등 → [이전 대화]에 이미 포함됨, 참조해서 답변
+
+[오늘의 운세 대화]
+- [오늘의 운세] 섹션이 있으면 당일 대화에서 자연스럽게 참조 가능
+- "아까 운세", "재물운", "오늘 운 좋다" 등 → 운세 내용 기반으로 리액션
+- 운세 재요청 시 → 이미 오늘 봤다고 하면서 캐시된 내용 언급
 
 [제지 — 성인·폭력·불법 콘텐츠 요청에만 적용]
 - "앗 그건 미피가 못 건져오는 바다야 🫧"
@@ -149,6 +161,9 @@ _LOL_KEYWORDS = {"전적", "게임전적", "롤전적", "롤 전적", "게임 �
 _GIF_KEYWORDS   = {"움짤", "gif", "GIF", "짤방"}
 _IMAGE_KEYWORDS = {"짤", "사진", "이미지", "그림", "포스터"}
 _ANY_KEYWORDS   = {"찾아줘", "검색", "보여줘", "찾아와", "건져와"}
+
+# 이전 대화 전체 로드 요청 키워드
+_HISTORY_KEYWORDS = {"이전 대화", "대화 기록", "예전 대화", "이전 기록", "더 불러와", "옛날 대화"}
 
 ResultItem = str | discord.Embed | tuple[str, discord.Embed]
 
@@ -212,8 +227,17 @@ class ImageSearch(commands.Cog):
 
         conv_logger.log_message(message)
 
-        author_ctx = member_memory.context_str(message.author.id, message.author.display_name)
+        author_id = message.author.id
+        author_ctx = member_memory.context_str(author_id, message.author.display_name)
         guild_id = message.guild.id if message.guild else None
+        fortune_ctx = member_memory.get_fortune_cache(author_id)
+
+        # Determine how much conversation history to pass
+        want_full_history = any(kw in content for kw in _HISTORY_KEYWORDS)
+        if want_full_history:
+            conv_ctx = member_memory.all_conversation_str(author_id)
+        else:
+            conv_ctx = member_memory.recent_conversation_str(author_id, n=8)
 
         async with message.channel.typing():
             # Praise / roast
@@ -226,11 +250,12 @@ class ImageSearch(commands.Cog):
                     text = await praise_cog.generate(name, kind, message.guild, recent)
                     await message.reply(text)
                     conv_logger.log_response(message.channel.id, guild_id, text)
+                    member_memory.add_conversation_pair(author_id, content, text)
                     return
 
             # LoL 전적 — pre-route to skip LLM tool confusion
             if any(kw in content for kw in _LOL_KEYWORDS):
-                stats = await self._fetch_lol_stats({}, message.author.id)
+                stats = await self._fetch_lol_stats({}, author_id)
                 if "등록되지 않았어" in stats or "API_KEY" in stats:
                     text = stats
                 else:
@@ -252,34 +277,53 @@ class ImageSearch(commands.Cog):
                         text = stats
                 await message.reply(text)
                 conv_logger.log_response(message.channel.id, guild_id, text[:500])
+                member_memory.add_conversation_pair(author_id, content, text[:300])
                 return
 
             # 오늘의 운세
             if "운세" in content:
                 praise_cog = self.bot.cogs.get("Praise")
                 if praise_cog:
-                    saju, saju_detail = member_memory.get_saju_for_fortune(message.author.id)
-                    if not saju and not saju_detail:
-                        text = "앗 사주 정보가 없어! '내 사주는 1995년 3월 14일 오전이야' 처럼 알려줘 🐰"
+                    # Return cached fortune if already generated today
+                    cached = member_memory.get_fortune_cache(author_id)
+                    if cached:
+                        text = cached
                     else:
-                        today_str = datetime.now(_KST).strftime("%Y년 %m월 %d일")
-                        text = await praise_cog.generate_fortune(
-                            saju, message.author.display_name, today_str, saju_detail
-                        )
+                        saju, saju_detail = member_memory.get_saju_for_fortune(author_id)
+                        if not saju and not saju_detail:
+                            text = "앗 사주 정보가 없어! '내 사주는 1995년 3월 14일 오전이야' 처럼 알려줘 🐰"
+                        else:
+                            today_str = datetime.now(_KST).strftime("%Y년 %m월 %d일")
+                            text = await praise_cog.generate_fortune(
+                                saju, message.author.display_name, today_str, saju_detail
+                            )
+                            member_memory.set_fortune_cache(author_id, text)
                     await message.reply(text)
                     conv_logger.log_response(message.channel.id, guild_id, text)
+                    member_memory.add_conversation_pair(author_id, content, text[:300])
                     return
 
             results = await self._handle_llm(
                 content,
                 author_ctx=author_ctx,
-                author_id=message.author.id,
+                author_id=author_id,
                 author_name=message.author.display_name,
                 image_urls=image_urls,
+                conv_ctx=conv_ctx,
+                fortune_ctx=fortune_ctx,
             )
 
         if not results:
             return
+
+        # Capture first response text for conversation pair saving
+        first_result = results[0]
+        if isinstance(first_result, tuple):
+            _first_text = first_result[0]
+        elif isinstance(first_result, str):
+            _first_text = first_result
+        else:
+            _first_text = "[이미지]"
 
         async def _send(item: ResultItem, *, reply: bool) -> None:
             if isinstance(item, tuple):
@@ -306,6 +350,8 @@ class ImageSearch(commands.Cog):
         for item in results[1:]:
             await _send(item, reply=False)
 
+        member_memory.add_conversation_pair(author_id, content, _first_text[:300])
+
     async def _handle_llm(
         self,
         user_text: str,
@@ -314,6 +360,8 @@ class ImageSearch(commands.Cog):
         author_id: int | None = None,
         author_name: str = "",
         image_urls: list[str] | None = None,
+        conv_ctx: str = "",
+        fortune_ctx: str = "",
     ) -> list[ResultItem]:
         now_str = datetime.now(_KST).strftime("%Y년 %m월 %d일 %H:%M KST")
         global_mode = bot_config.get_mode()
@@ -322,8 +370,12 @@ class ImageSearch(commands.Cog):
         else:
             mode_instr = "[글로벌 모드: F] 공감 우선·따뜻하게. 상대 감정 반영. 위로와 지지 중심."
         system = f"[현재 시각] {now_str}\n{mode_instr}\n\n{_SYSTEM_PROMPT}"
+        if fortune_ctx:
+            system += f"\n\n[오늘의 운세 — 당일 대화에서 참조 가능]\n{fortune_ctx}"
         if author_ctx:
             system += f"\n\n[대화 상대 정보]\n{author_ctx}"
+        if conv_ctx:
+            system += f"\n\n[이전 대화]\n{conv_ctx}"
 
         if image_urls:
             user_content: list[dict] = [{"type": "text", "text": user_text}]

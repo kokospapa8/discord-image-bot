@@ -1,10 +1,13 @@
-"""Per-member persistent memory (keywords, MBTI, 사주)."""
+"""Per-member persistent memory (keywords, MBTI, 사주, conversation)."""
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 _DIR = Path("/app/data/members")
+_KST = timezone(timedelta(hours=9))
+_MAX_CONV = 30
 
 
 def _path(member_id: int) -> Path:
@@ -98,6 +101,77 @@ def get_saju_for_fortune(member_id: int) -> tuple[str, str]:
     """Returns (saju_basic, saju_detail). Either may be empty."""
     data = load(member_id)
     return data.get("saju", ""), data.get("saju_detail", "")
+
+
+# ── conversation pair memory ──────────────────────────────────────────────────
+
+def add_conversation_pair(member_id: int, user_text: str, miffy_text: str) -> None:
+    """Append a user↔miffy exchange. Compacts oldest entries when over _MAX_CONV."""
+    data = load(member_id)
+    pairs: list[dict] = data.get("conversation", [])
+    pairs.append({
+        "ts": datetime.now(_KST).isoformat(),
+        "user": user_text[:300],
+        "miffy": miffy_text[:300],
+    })
+    if len(pairs) > _MAX_CONV:
+        _archive_pairs(member_id, pairs[:-_MAX_CONV])
+        pairs = pairs[-_MAX_CONV:]
+    data["conversation"] = pairs
+    save(member_id, data)
+
+
+def _archive_pairs(member_id: int, pairs: list[dict]) -> None:
+    archive = _DIR / f"{member_id}_conv_archive.jsonl"
+    _DIR.mkdir(parents=True, exist_ok=True)
+    with archive.open("a", encoding="utf-8") as f:
+        for p in pairs:
+            f.write(json.dumps(p, ensure_ascii=False) + "\n")
+
+
+def recent_conversation_str(member_id: int, n: int = 8) -> str:
+    """Last N pairs formatted for Claude context."""
+    data = load(member_id)
+    pairs: list[dict] = data.get("conversation", [])[-n:]
+    if not pairs:
+        return ""
+    lines: list[str] = []
+    for p in pairs:
+        lines.append(f"사용자: {p['user']}")
+        lines.append(f"미피: {p['miffy']}")
+    return "\n".join(lines)
+
+
+def all_conversation_str(member_id: int) -> str:
+    """All stored pairs (up to _MAX_CONV) — used when user explicitly requests full history."""
+    data = load(member_id)
+    pairs: list[dict] = data.get("conversation", [])
+    if not pairs:
+        return ""
+    lines: list[str] = []
+    for p in pairs:
+        lines.append(f"사용자: {p['user']}")
+        lines.append(f"미피: {p['miffy']}")
+    return "\n".join(lines)
+
+
+# ── daily fortune cache ───────────────────────────────────────────────────────
+
+def get_fortune_cache(member_id: int) -> str:
+    """Returns today's cached fortune text, or empty string if not generated yet."""
+    data = load(member_id)
+    cache: dict = data.get("fortune_cache", {})
+    today = datetime.now(_KST).strftime("%Y-%m-%d")
+    if cache.get("date") == today:
+        return cache.get("fortune", "")
+    return ""
+
+
+def set_fortune_cache(member_id: int, fortune: str) -> None:
+    data = load(member_id)
+    today = datetime.now(_KST).strftime("%Y-%m-%d")
+    data["fortune_cache"] = {"date": today, "fortune": fortune[:1000]}
+    save(member_id, data)
 
 
 def format_for_display(member_id: int, fallback_name: str) -> str:
