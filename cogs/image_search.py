@@ -195,6 +195,8 @@ class ImageSearch(commands.Cog):
             return
         if not message.guild:
             return
+        if message.content.startswith("!"):
+            return
 
         in_image_channel = (
             self._image_channel_id is not None
