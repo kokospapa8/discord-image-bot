@@ -299,13 +299,13 @@ class ImageSearch(commands.Cog):
                     if cached:
                         text = cached
                     else:
-                        ziwei_birth = member_memory.get_ziwei_birth(author_id)
-                        if not ziwei_birth:
-                            text = "앗 자미두수 생년월일시가 없어! '내 자미두수 생년월일시는 1990년 5월 12일 자시야' 처럼 알려줘 🌟"
+                        birth_str, birth_src = member_memory.get_birth_for_ziwei(author_id)
+                        if not birth_str:
+                            text = "앗 사주 정보가 없어! '내 사주는 1990년 5월 12일이야' 처럼 알려주면 자미두수 봐줄게 🌟"
                         else:
                             today_str = datetime.now(_KST).strftime("%Y년 %m월 %d일")
                             text = await praise_cog.generate_ziwei_fortune(
-                                ziwei_birth, message.author.display_name, today_str
+                                birth_str, message.author.display_name, today_str, birth_src
                             )
                             member_memory.set_ziwei_cache(author_id, text)
                     await message.reply(text)

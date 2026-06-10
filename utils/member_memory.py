@@ -108,6 +108,19 @@ def get_ziwei_birth(member_id: int) -> str:
     return load(member_id).get("ziwei_birth", "")
 
 
+def get_birth_for_ziwei(member_id: int) -> tuple[str, str]:
+    """Returns (birth_str, source) for 자미두수 calculation.
+
+    Priority: ziwei_birth > saju_detail > saju.
+    source is one of: 'ziwei_birth', 'saju_detail', 'saju', ''.
+    """
+    data = load(member_id)
+    for field in ("ziwei_birth", "saju_detail", "saju"):
+        if data.get(field):
+            return data[field], field
+    return "", ""
+
+
 # ── conversation pair memory ──────────────────────────────────────────────────
 
 def add_conversation_pair(member_id: int, user_text: str, miffy_text: str) -> None:
