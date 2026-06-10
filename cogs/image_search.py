@@ -76,6 +76,9 @@ _SYSTEM_PROMPT = """\
   예: "나 원래 말 없어" → save_member_info(field="keyword", value="말없음")
 - 고민상담 모드 변경 요청: "T모드로 바꿔줘", "F모드로 해줘" → save_member_info(field="advice_mode", value="T" or "F")
 - 상세 사주 블록 (년주/월주/일주/시주/오행/십신/대운 등 여러 줄) → save_member_info(field="saju_detail", value=<원문 전체>)
+- 자미두수용 생년월일시 언급 시 → save_member_info(field="ziwei_birth", value=<원문 그대로>)
+  예: "내 자미두수 생년월일시는 1990년 5월 12일 자시야" → save_member_info(field="ziwei_birth", value="1990년 5월 12일 자시")
+  예: "음력 1990년 5월 12일 축시" (자미두수 맥락) → save_member_info(field="ziwei_birth", value="음력 1990년 5월 12일 축시")
 - 저장 성공 후 미피 스타일로 짧게 확인 ("오오 저장했어!", "헉 기억해둘게 🐰" 등)
 
 [내 정보 조회]
@@ -124,6 +127,11 @@ _SYSTEM_PROMPT = """\
 - [오늘의 운세] 섹션이 있으면 당일 대화에서 자연스럽게 참조 가능
 - "아까 운세", "재물운", "오늘 운 좋다" 등 → 운세 내용 기반으로 리액션
 - 운세 재요청 시 → 이미 오늘 봤다고 하면서 캐시된 내용 언급
+
+[자미두수 운세 대화]
+- [자미두수 운세] 섹션이 있으면 당일 대화에서 자연스럽게 참조 가능
+- "아까 자미두수", "명궁", "자미성", "재백궁" 등 → 운세 내용 기반으로 리액션
+- 자미두수 재요청 시 → 이미 오늘 봤다고 하면서 캐시된 내용 언급
 
 [제지 — 성인·폭력·불법 콘텐츠 요청에만 적용]
 - "앗 그건 미피가 못 건져오는 바다야 🫧"
@@ -233,6 +241,7 @@ class ImageSearch(commands.Cog):
         author_ctx = member_memory.context_str(author_id, message.author.display_name)
         guild_id = message.guild.id if message.guild else None
         fortune_ctx = member_memory.get_fortune_cache(author_id)
+        ziwei_ctx = member_memory.get_ziwei_cache(author_id)
 
         # Determine how much conversation history to pass
         want_full_history = any(kw in content for kw in _HISTORY_KEYWORDS)
@@ -282,6 +291,28 @@ class ImageSearch(commands.Cog):
                 member_memory.add_conversation_pair(author_id, content, text[:300])
                 return
 
+            # 자미두수 운세
+            if "자미두수" in content:
+                praise_cog = self.bot.cogs.get("Praise")
+                if praise_cog:
+                    cached = member_memory.get_ziwei_cache(author_id)
+                    if cached:
+                        text = cached
+                    else:
+                        ziwei_birth = member_memory.get_ziwei_birth(author_id)
+                        if not ziwei_birth:
+                            text = "앗 자미두수 생년월일시가 없어! '내 자미두수 생년월일시는 1990년 5월 12일 자시야' 처럼 알려줘 🌟"
+                        else:
+                            today_str = datetime.now(_KST).strftime("%Y년 %m월 %d일")
+                            text = await praise_cog.generate_ziwei_fortune(
+                                ziwei_birth, message.author.display_name, today_str
+                            )
+                            member_memory.set_ziwei_cache(author_id, text)
+                    await message.reply(text)
+                    conv_logger.log_response(message.channel.id, guild_id, text)
+                    member_memory.add_conversation_pair(author_id, content, text[:300])
+                    return
+
             # 오늘의 운세
             if "운세" in content:
                 praise_cog = self.bot.cogs.get("Praise")
@@ -313,6 +344,7 @@ class ImageSearch(commands.Cog):
                 image_urls=image_urls,
                 conv_ctx=conv_ctx,
                 fortune_ctx=fortune_ctx,
+                ziwei_ctx=ziwei_ctx,
             )
 
         if not results:
@@ -364,6 +396,7 @@ class ImageSearch(commands.Cog):
         image_urls: list[str] | None = None,
         conv_ctx: str = "",
         fortune_ctx: str = "",
+        ziwei_ctx: str = "",
     ) -> list[ResultItem]:
         now_str = datetime.now(_KST).strftime("%Y년 %m월 %d일 %H:%M KST")
         global_mode = bot_config.get_mode()
@@ -374,6 +407,8 @@ class ImageSearch(commands.Cog):
         system = f"[현재 시각] {now_str}\n{mode_instr}\n\n{_SYSTEM_PROMPT}"
         if fortune_ctx:
             system += f"\n\n[오늘의 운세 — 당일 대화에서 참조 가능]\n{fortune_ctx}"
+        if ziwei_ctx:
+            system += f"\n\n[자미두수 운세 — 당일 대화에서 참조 가능]\n{ziwei_ctx}"
         if author_ctx:
             system += f"\n\n[대화 상대 정보]\n{author_ctx}"
         if conv_ctx:

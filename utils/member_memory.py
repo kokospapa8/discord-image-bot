@@ -103,6 +103,11 @@ def get_saju_for_fortune(member_id: int) -> tuple[str, str]:
     return data.get("saju", ""), data.get("saju_detail", "")
 
 
+def get_ziwei_birth(member_id: int) -> str:
+    """Returns stored 자미두수 birth datetime string, or empty string."""
+    return load(member_id).get("ziwei_birth", "")
+
+
 # ── conversation pair memory ──────────────────────────────────────────────────
 
 def add_conversation_pair(member_id: int, user_text: str, miffy_text: str) -> None:
@@ -155,6 +160,22 @@ def all_conversation_str(member_id: int) -> str:
     return "\n".join(lines)
 
 
+# ── daily ziwei (자미두수) cache ──────────────────────────────────────────────
+
+def get_ziwei_cache(member_id: int) -> str:
+    """Returns today's cached 자미두수 fortune, or empty string."""
+    cache = load(member_id).get("ziwei_cache", {})
+    today = datetime.now(_KST).strftime("%Y-%m-%d")
+    return cache.get("fortune", "") if cache.get("date") == today else ""
+
+
+def set_ziwei_cache(member_id: int, fortune: str) -> None:
+    data = load(member_id)
+    today = datetime.now(_KST).strftime("%Y-%m-%d")
+    data["ziwei_cache"] = {"date": today, "fortune": fortune[:1500]}
+    save(member_id, data)
+
+
 # ── daily fortune cache ───────────────────────────────────────────────────────
 
 def get_fortune_cache(member_id: int) -> str:
@@ -188,6 +209,8 @@ def format_for_display(member_id: int, fallback_name: str) -> str:
         parts.append(f"사주: {data['saju']}")
     if data.get("saju_detail"):
         parts.append("상세 사주: 등록됨 (년주/월주/일주/시주/오행/십신/대운 포함)")
+    if data.get("ziwei_birth"):
+        parts.append(f"자미두수 생년월일시: {data['ziwei_birth']}")
     if data.get("advice_mode"):
         mode = data["advice_mode"]
         label = "논리/팩트형" if mode == "T" else "공감/감성형"

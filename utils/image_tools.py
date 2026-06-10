@@ -114,11 +114,12 @@ MEMBER_TOOLS: list[dict] = [
             "properties": {
                 "field": {
                     "type": "string",
-                    "enum": ["mbti", "saju", "saju_detail", "keyword", "advice_mode", "riot_id"],
+                    "enum": ["mbti", "saju", "saju_detail", "keyword", "advice_mode", "riot_id", "ziwei_birth"],
                     "description": (
                         "저장할 필드 종류. "
                         "saju=생년월일 등 기본 사주 텍스트. "
                         "saju_detail=년주/월주/일주/시주/오행/십신/대운 등 상세 사주 전체 블록(원문 그대로). "
+                        "ziwei_birth=자미두수용 생년월일시 (음양력 포함). "
                         "advice_mode는 'T'/'F'. riot_id는 'Name#Tag' 형식."
                     ),
                 },
@@ -156,7 +157,7 @@ MEMBER_TOOLS: list[dict] = [
             "properties": {
                 "field": {
                     "type": "string",
-                    "enum": ["mbti", "saju", "saju_detail", "keyword", "advice_mode", "riot_id", "all"],
+                    "enum": ["mbti", "saju", "saju_detail", "keyword", "advice_mode", "riot_id", "ziwei_birth", "all"],
                     "description": "삭제할 필드. all이면 전체 삭제.",
                 },
                 "value": {

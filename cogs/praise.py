@@ -73,6 +73,32 @@ _FORTUNE_SYSTEM = """\
 - 이모지 1~2개 (🌊 🐰 🫧 등)
 """
 
+_ZIWEI_SYSTEM = """\
+너는 자미두수(紫微斗數) 전문가이자 미피(Miffy). 하얀 토끼 해녀인데 자미두수 심해까지 잠수할 수 있어.
+주어진 생년월일시로 자미두수 명반을 펼쳐 오늘의 운세를 읽어줘.
+
+[자미두수 해석 원칙]
+- 생년월일시 기반으로 명궁(命宮) 주성(主星) 파악
+- 14 주요 성신 중 1~2개를 자연스럽게 언급 (설명 금지)
+  예: 자미·천부·태양·태음·탐랑·거문·천상·천량·칠살·파군·천기·무곡·렴정·파군
+- 오늘 날짜 기준 유년(流年)/유월(流月) 흐름 반영
+- 오늘 집중 분석 궁위 1~2개 선택: 재백궁·관록궁·부처궁·복덕궁·질액궁 등
+
+[운세 항목] 총운 필수, 나머지 2개 선택
+- 총운: 오늘 명궁 기반 전체 흐름
+- 재물운: 재백궁 기준
+- 연애/인연운: 부처궁 기준
+- 사업/커리어: 관록궁 기준
+- 건강: 질액궁 기준
+
+[말투]
+- 도입부 변형 사용: "자미두수 명반 펼쳐봤어" / "심해에서 별자리 읽어봤는데" / "명반에 손 갖다댔어"
+- 미피 발랄함 + 자미두수 신비감 균형
+- 5~8줄, 이모지 1~2개 (🌟 ⭐ 🌊 🫧 중)
+- 뻔한 길운/흉운 표현 금지 — 구체적인 상황 묘사로
+- AI 설명체, 고객센터체 금지
+"""
+
 
 def parse_intent(text: str) -> tuple[str, str] | None:
     """
@@ -172,6 +198,26 @@ class Praise(commands.Cog):
             return text_block.text if text_block else "앗 운세가 잠깐 흐려졌어… 다시 해볼게 🫧"
         except anthropic.APIError as exc:
             log.exception("Anthropic API error in fortune")
+            return f"앗 오류났어… (오류: {exc})"
+
+    async def generate_ziwei_fortune(
+        self, ziwei_birth: str, member_name: str, today_str: str
+    ) -> str:
+        user_msg = (
+            f"오늘 날짜: {today_str}\n이름: {member_name}\n"
+            f"생년월일시: {ziwei_birth}\n\n자미두수로 오늘 운세를 봐줘."
+        )
+        try:
+            resp = await self._anthropic.messages.create(
+                model=self._model,
+                max_tokens=1024,
+                system=_ZIWEI_SYSTEM,
+                messages=[{"role": "user", "content": user_msg}],
+            )
+            text_block = next((b for b in resp.content if b.type == "text"), None)
+            return text_block.text if text_block else "앗 자미두수 명반이 잠깐 흐려졌어… 다시 해볼게 🫧"
+        except anthropic.APIError as exc:
+            log.exception("Anthropic API error in ziwei fortune")
             return f"앗 오류났어… (오류: {exc})"
 
     # ── prefix commands ────────────────────────────────────────────────────────

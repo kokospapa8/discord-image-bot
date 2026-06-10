@@ -23,6 +23,7 @@ COGS = [
     "cogs.game_wishlist",
     "cogs.image_search",
     "cogs.version_announce",
+    "cogs.daily_fortune",
 ]
 
 intents = discord.Intents.default()
