@@ -1,11 +1,17 @@
 """
-Daily Fortune Cog — sends saju-based fortune at 8am KST to members with saved saju data.
+Daily Fortune Cog — scheduled reminders and fortune notifications.
+
+Tasks (all KST):
+  08:00  사주 등록 멤버에게 오늘의 운세
+  23:00  듀오링고 리마인더
+  23:30  양치 리마인더
 """
 from __future__ import annotations
 
 import json
 import logging
 import os
+import random
 from datetime import datetime, time, timezone, timedelta
 from pathlib import Path
 
@@ -18,12 +24,29 @@ log = logging.getLogger(__name__)
 
 _KST = timezone(timedelta(hours=9))
 _MEMBER_DIR = Path("/app/data/members")
-_MORNING_TIME = time(hour=8, minute=0, tzinfo=_KST)
+
+_MORNING_TIME   = time(hour=8,  minute=0,  tzinfo=_KST)
+_DUOLINGO_TIME  = time(hour=23, minute=0,  tzinfo=_KST)
+_BRUSH_TIME     = time(hour=23, minute=30, tzinfo=_KST)
 
 _NO_SAJU_PROMPT = (
     "사주 없는 분들도 미피 멘션하고 '내 사주는 [생년월일]이야' 라고 알려주면 "
     "내일부터 같이 알려줄게 🐰"
 )
+
+_DUOLINGO_MSGS = [
+    "오늘 듀오링고 했어? 🦉 초록 부엉이 기다리고 있어",
+    "앗 듀오링고! 아직 안 했으면 지금이라도 🫧",
+    "오오 스트릭 지켰어? 부엉이 화나기 전에 얼른 🦉",
+    "듀오링고 잊지 않았지? 잠수하기 전에 꼭 해 🌊",
+]
+
+_BRUSH_MSGS = [
+    "양치했어? 🦷 안 하면 잠수 못 해",
+    "이 닦고 자야지! 얼른 🦷🫧",
+    "앗 양치! 잊기 전에 지금 해 🐰",
+    "오늘 양치 완료? 심해에서도 치카치카 🦷",
+]
 
 
 class DailyFortune(commands.Cog):
@@ -31,9 +54,15 @@ class DailyFortune(commands.Cog):
         self.bot = bot
         self._channel_id = channel_id
         self.daily_task.start()
+        self.duolingo_reminder.start()
+        self.brush_reminder.start()
 
     def cog_unload(self) -> None:
         self.daily_task.cancel()
+        self.duolingo_reminder.cancel()
+        self.brush_reminder.cancel()
+
+    # ── 08:00 운세 ────────────────────────────────────────────────────────────
 
     @tasks.loop(time=_MORNING_TIME)
     async def daily_task(self) -> None:
@@ -103,6 +132,32 @@ class DailyFortune(commands.Cog):
 
     @daily_task.before_loop
     async def before_daily_task(self) -> None:
+        await self.bot.wait_until_ready()
+
+    # ── 23:00 듀오링고 ────────────────────────────────────────────────────────
+
+    @tasks.loop(time=_DUOLINGO_TIME)
+    async def duolingo_reminder(self) -> None:
+        channel = self.bot.get_channel(self._channel_id)
+        if not isinstance(channel, discord.TextChannel):
+            return
+        await channel.send(random.choice(_DUOLINGO_MSGS))
+
+    @duolingo_reminder.before_loop
+    async def before_duolingo(self) -> None:
+        await self.bot.wait_until_ready()
+
+    # ── 23:30 양치 ────────────────────────────────────────────────────────────
+
+    @tasks.loop(time=_BRUSH_TIME)
+    async def brush_reminder(self) -> None:
+        channel = self.bot.get_channel(self._channel_id)
+        if not isinstance(channel, discord.TextChannel):
+            return
+        await channel.send(random.choice(_BRUSH_MSGS))
+
+    @brush_reminder.before_loop
+    async def before_brush(self) -> None:
         await self.bot.wait_until_ready()
 
 
