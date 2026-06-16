@@ -138,6 +138,7 @@ _SYSTEM_PROMPT = """\
 [오늘의 운세 대화]
 - [오늘의 운세] 섹션이 있으면 당일 대화에서 자연스럽게 참조 가능
 - "아까 운세", "재물운", "오늘 운 좋다" 등 → 운세 내용 기반으로 리액션
+- "더 자세히", "자세하게", "더 깊게" 등 → 앞서 본 운세를 더 풀어서 설명 (운세 키워드 없어도 맥락 연결)
 - 운세 재요청 시 → 이미 오늘 봤다고 하면서 캐시된 내용 언급
 
 [자미두수 운세 대화]
@@ -313,6 +314,27 @@ class ImageSearch(commands.Cog):
                 conv_logger.log_response(message.channel.id, guild_id, text[:500])
                 member_memory.add_conversation_pair(author_id, content, text[:300])
                 return
+
+            # 운세 자세히 — "운세" 키워드 없어도 오늘 운세 캐시 있고 "자세히" 언급 시
+            _DETAIL_KW = ("자세히", "자세한", "자세하게")
+            if fortune_ctx and any(kw in content for kw in _DETAIL_KW):
+                praise_cog = self.bot.cogs.get("Praise")
+                if praise_cog:
+                    saju, saju_detail = member_memory.get_saju_for_fortune(author_id)
+                    if saju or saju_detail:
+                        cached_detail = member_memory.get_fortune_detail_cache(author_id)
+                        if cached_detail:
+                            text = cached_detail
+                        else:
+                            today_str = datetime.now(_KST).strftime("%Y년 %m월 %d일")
+                            text = await praise_cog.generate_fortune(
+                                saju, message.author.display_name, today_str, saju_detail, detailed=True
+                            )
+                            member_memory.set_fortune_detail_cache(author_id, text)
+                        await message.reply(text)
+                        conv_logger.log_response(message.channel.id, guild_id, text)
+                        member_memory.add_conversation_pair(author_id, content, text[:300])
+                        return
 
             # 자미두수 운세
             if "자미두수" in content:
