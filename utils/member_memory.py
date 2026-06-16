@@ -208,6 +208,20 @@ def set_fortune_cache(member_id: int, fortune: str) -> None:
     save(member_id, data)
 
 
+def get_fortune_detail_cache(member_id: int) -> str:
+    """Returns today's cached detailed fortune, or empty string."""
+    cache = load(member_id).get("fortune_detail_cache", {})
+    today = datetime.now(_KST).strftime("%Y-%m-%d")
+    return cache.get("fortune", "") if cache.get("date") == today else ""
+
+
+def set_fortune_detail_cache(member_id: int, fortune: str) -> None:
+    data = load(member_id)
+    today = datetime.now(_KST).strftime("%Y-%m-%d")
+    data["fortune_detail_cache"] = {"date": today, "fortune": fortune[:3000]}
+    save(member_id, data)
+
+
 def format_for_display(member_id: int, fallback_name: str) -> str:
     """Human-readable info for the user to see."""
     data = load(member_id)

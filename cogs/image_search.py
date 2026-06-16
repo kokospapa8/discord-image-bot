@@ -340,14 +340,24 @@ class ImageSearch(commands.Cog):
             if "운세" in content:
                 praise_cog = self.bot.cogs.get("Praise")
                 if praise_cog:
-                    # Return cached fortune if already generated today
-                    cached = member_memory.get_fortune_cache(author_id)
-                    if cached:
-                        text = cached
+                    is_detailed = any(kw in content for kw in ("자세히", "자세한", "자세하게"))
+                    saju, saju_detail = member_memory.get_saju_for_fortune(author_id)
+                    if not saju and not saju_detail:
+                        text = "앗 사주 정보가 없어! '내 사주는 1995년 3월 14일 오전이야' 처럼 알려줘 🐰"
+                    elif is_detailed:
+                        cached = member_memory.get_fortune_detail_cache(author_id)
+                        if cached:
+                            text = cached
+                        else:
+                            today_str = datetime.now(_KST).strftime("%Y년 %m월 %d일")
+                            text = await praise_cog.generate_fortune(
+                                saju, message.author.display_name, today_str, saju_detail, detailed=True
+                            )
+                            member_memory.set_fortune_detail_cache(author_id, text)
                     else:
-                        saju, saju_detail = member_memory.get_saju_for_fortune(author_id)
-                        if not saju and not saju_detail:
-                            text = "앗 사주 정보가 없어! '내 사주는 1995년 3월 14일 오전이야' 처럼 알려줘 🐰"
+                        cached = member_memory.get_fortune_cache(author_id)
+                        if cached:
+                            text = cached
                         else:
                             today_str = datetime.now(_KST).strftime("%Y년 %m월 %d일")
                             text = await praise_cog.generate_fortune(

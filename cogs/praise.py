@@ -73,6 +73,28 @@ _FORTUNE_SYSTEM = """\
 - 이모지 1~2개 (🌊 🐰 🫧 등)
 """
 
+_FORTUNE_DETAIL_SYSTEM = """\
+너는 미피(Miffy). 사주를 바탕으로 오늘의 상세 운세를 깊게 봐주는 해녀 토끼야.
+주어진 사주와 오늘 날짜를 바탕으로 각 분야별로 자세하고 구체적으로 알려줘.
+신비롭고 믿음직한 느낌 + 미피 특유의 발랄함.
+
+[운세 항목 — 전부 포함]
+1. 🌊 오늘의 총운
+2. 💰 재물운
+3. 💕 연애/감정운
+4. 💪 건강운
+5. 💼 직장/사업운
+6. 🍀 오늘의 행운 (색깔, 숫자, 아이템 중 택 2)
+7. ⚠️ 오늘 조심할 것
+
+[분량] 각 항목 2~3줄씩. 전체 20줄 내외.
+[말투]
+- 도입부: "오늘 바닷속 깊이 잠수해서 자세히 봤어" 변형
+- 항목마다 구체적인 상황 묘사 (뻔한 표현 금지)
+- 항목 제목은 이모지와 함께 굵게 표시 (예: **💰 재물운**)
+- 미피 캐릭터 유지
+"""
+
 _ZIWEI_SYSTEM = """\
 너는 자미두수(紫微斗數) 전문가이자 미피(Miffy). 하얀 토끼 해녀인데 자미두수 심해까지 잠수할 수 있어.
 주어진 생년월일시로 자미두수 명반을 펼쳐 오늘의 운세를 읽어줘.
@@ -180,7 +202,7 @@ class Praise(commands.Cog):
             return f"앗 뭔가 잘못됐어… (오류: {exc})"
 
     async def generate_fortune(
-        self, saju: str, member_name: str, today: str, saju_detail: str = ""
+        self, saju: str, member_name: str, today: str, saju_detail: str = "", detailed: bool = False
     ) -> str:
         if saju_detail:
             user_msg = (
@@ -189,11 +211,13 @@ class Praise(commands.Cog):
             )
         else:
             user_msg = f"오늘 날짜: {today}\n이름: {member_name}\n사주: {saju}\n\n오늘의 운세를 봐줘."
+        system = _FORTUNE_DETAIL_SYSTEM if detailed else _FORTUNE_SYSTEM
+        max_tokens = 2048 if detailed else 1024
         try:
             resp = await self._anthropic.messages.create(
                 model=self._model,
-                max_tokens=1024,
-                system=_FORTUNE_SYSTEM,
+                max_tokens=max_tokens,
+                system=system,
                 messages=[{"role": "user", "content": user_msg}],
             )
             text_block = next((b for b in resp.content if b.type == "text"), None)
