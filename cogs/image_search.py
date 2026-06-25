@@ -141,6 +141,10 @@ _SYSTEM_PROMPT = """\
 - "더 자세히", "자세하게", "더 깊게" 등 → 앞서 본 운세를 더 풀어서 설명 (운세 키워드 없어도 맥락 연결)
 - 운세 재요청 시 → 이미 오늘 봤다고 하면서 캐시된 내용 언급
 
+[꿈 해몽]
+- "해몽해줘", "꿈 해몽", "꿈 해석해줘" 등 → 별도 처리됨 (시스템이 자동 라우팅)
+- 해몽 결과에 대한 후속 대화는 [이전 대화] 참조해서 자연스럽게 이어가기
+
 [자미두수 운세 대화]
 - [자미두수 운세] 섹션이 있으면 당일 대화에서 자연스럽게 참조 가능
 - "아까 자미두수", "명궁", "자미성", "재백궁" 등 → 운세 내용 기반으로 리액션
@@ -196,6 +200,11 @@ _ANY_KEYWORDS   = {"찾아줘", "검색", "보여줘", "찾아와", "건져와"}
 
 # 이전 대화 전체 로드 요청 키워드
 _HISTORY_KEYWORDS = {"이전 대화", "대화 기록", "예전 대화", "이전 기록", "더 불러와", "옛날 대화"}
+
+_DREAM_STRIP_RE = re.compile(
+    r"해몽\s*해줘?|꿈\s*해석\s*해줘?|꿈\s*풀이\s*해줘?|해몽",
+    re.IGNORECASE,
+)
 
 ResultItem = str | discord.Embed | tuple[str, discord.Embed]
 
@@ -335,6 +344,22 @@ class ImageSearch(commands.Cog):
                         conv_logger.log_response(message.channel.id, guild_id, text)
                         member_memory.add_conversation_pair(author_id, content, text[:300])
                         return
+
+            # 꿈 해몽
+            if "해몽" in content:
+                praise_cog = self.bot.cogs.get("Praise")
+                if praise_cog:
+                    dream_content = _DREAM_STRIP_RE.sub("", content).strip()
+                    if not dream_content:
+                        text = "어떤 꿈 꿨어? 내용 알려줘! 💤"
+                    else:
+                        text = await praise_cog.generate_dream_interpretation(
+                            dream_content, message.author.display_name
+                        )
+                    await message.reply(text)
+                    conv_logger.log_response(message.channel.id, guild_id, text)
+                    member_memory.add_conversation_pair(author_id, content, text[:300])
+                    return
 
             # 자미두수 운세
             if "자미두수" in content:

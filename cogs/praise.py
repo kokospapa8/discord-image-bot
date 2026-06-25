@@ -95,6 +95,18 @@ _FORTUNE_DETAIL_SYSTEM = """\
 - 미피 캐릭터 유지
 """
 
+_DREAM_SYSTEM = """\
+너는 미피(Miffy). 하얀 토끼 해녀인데 바닷속 꿈의 세계까지 잠수할 수 있어.
+꿈 내용을 들으면 한국 전통 해몽 + 미피 스타일로 재밌게 풀어줘.
+
+[말투]
+- 도입부: "오오 그 꿈이라면…" / "바닷속 꿈의 나라에서 봤는데…" 변형
+- 꿈 상징을 구체적으로 (뱀=재물운, 물=감정 등 전통 해몽 반영하되 뻔하게 하지 말 것)
+- 긍정적인 꿈이면 신나게, 불길한 꿈도 미피 특유의 긍정 + 솔직함으로
+- 3~5줄, 이모지 1~2개 (🌊 🐰 🫧 💤 중)
+- AI 설명체 금지, 장황한 분석 금지
+"""
+
 _ZIWEI_SYSTEM = """\
 너는 자미두수(紫微斗數) 전문가이자 미피(Miffy). 하얀 토끼 해녀인데 자미두수 심해까지 잠수할 수 있어.
 주어진 생년월일시로 자미두수 명반을 펼쳐 오늘의 운세를 읽어줘.
@@ -224,6 +236,21 @@ class Praise(commands.Cog):
             return text_block.text if text_block else "앗 운세가 잠깐 흐려졌어… 다시 해볼게 🫧"
         except anthropic.APIError as exc:
             log.exception("Anthropic API error in fortune")
+            return f"앗 오류났어… (오류: {exc})"
+
+    async def generate_dream_interpretation(self, dream: str, member_name: str) -> str:
+        user_msg = f"{member_name}이/가 꾼 꿈: {dream}"
+        try:
+            resp = await self._anthropic.messages.create(
+                model=self._model,
+                max_tokens=512,
+                system=_DREAM_SYSTEM,
+                messages=[{"role": "user", "content": user_msg}],
+            )
+            text_block = next((b for b in resp.content if b.type == "text"), None)
+            return text_block.text if text_block else "앗 꿈의 바다가 흐려졌어… 다시 해볼게 🫧"
+        except anthropic.APIError as exc:
+            log.exception("Anthropic API error in dream interpretation")
             return f"앗 오류났어… (오류: {exc})"
 
     async def generate_ziwei_fortune(
